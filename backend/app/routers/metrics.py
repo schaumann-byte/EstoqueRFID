@@ -1,13 +1,14 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import date, timedelta
 from ..db import get_session
-from ..repositories.metrics_repo import get_stock_amount, get_low_stock_summary, get_near_expiry_count, get_out_of_stock_count, get_stock_summary
-from ..schemas.metrics import StockSummary, LowStockSummary, NearExpirySummary, OutOfStockCount, ProductStock
-from typing import List
+from ..repositories.metrics_repo import get_stock_amount, get_low_stock_summary, get_near_expiry_count, get_out_of_stock_count, get_stock_summary, get_items_page
+from ..schemas.metrics import StockSummary, LowStockSummary, NearExpirySummary, OutOfStockCount, ProductStock, ItemsPage
+from typing import List, Optional
 
 
 router = APIRouter(prefix="/metrics", tags=["metrics"])
+
 
 @router.get("/stock-amount", response_model=StockSummary)
 async def stock_summary(session: AsyncSession = Depends(get_session)) -> StockSummary:
@@ -44,11 +45,34 @@ async def near_expiry(
     )
 
 
+
+
 @router.get("/out-of-stock", response_model=OutOfStockCount)
 async def out_of_stock(session: AsyncSession = Depends(get_session)) -> OutOfStockCount:
     count = await get_out_of_stock_count(session)
     return OutOfStockCount(count=count)
 
 @router.get("/stock-summary", response_model=List[ProductStock])
-def stock_summary(db = Depends(get_session)):
-    return get_stock_summary(db)
+async def stock_summary(session: AsyncSession = Depends(get_session)) -> List[ProductStock]:
+    return await get_stock_summary(session)   # <-- await aqui
+
+
+@router.get("/items", response_model=ItemsPage)
+async def list_items(
+    session: AsyncSession = Depends(get_session),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    q: Optional[str] = Query(None, description="Busca em descrição/marca/etiqueta"),
+    in_stock: Optional[bool] = Query(None, description="Somente itens em estoque"),
+    validade_ate: Optional[str] = Query(None, description="Filtrar por validade até (YYYY-MM-DD)"),
+) -> ItemsPage:
+    data = await get_items_page(
+        session,
+        page=page,
+        page_size=page_size,
+        q=q,
+        in_stock=in_stock,
+        validade_ate=validade_ate,
+    )
+    return ItemsPage(**data)
+

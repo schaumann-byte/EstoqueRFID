@@ -1,4 +1,6 @@
 from pydantic import BaseModel
+from datetime import datetime, date
+from typing import Optional, List
 
 
 class StockSummary(BaseModel):
@@ -32,3 +34,21 @@ class ProductStock(BaseModel):
 
 class StockSummaryResponse(BaseModel):
     items: list[ProductStock]
+
+
+class ItemRow(BaseModel):
+    id: int
+    codigo_produto: int
+    etiqueta_rfid: str
+    timestamp_entrada: datetime
+    data_validade: Optional[date] = None
+    timestamp_salida: Optional[datetime] = None
+    descricao: str
+    marca: str
+    categoria: str
+
+class ItemsPage(BaseModel):
+    items: List[ItemRow]
+    total: int
+    page: int
+    page_size: int

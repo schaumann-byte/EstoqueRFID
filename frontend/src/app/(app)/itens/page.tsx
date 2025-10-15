@@ -1,8 +1,8 @@
 import Sidebar from "@/components/sidebar";
 import InventoryKpis from "@/components/InventoryKpis";
-import StockStatusTable from "@/components/StockStatusTable";
+import ItemsStatusTable from "@/components/ItemStatusTable";
 
-export default function DashboardPage() {
+export default function ItensPage() {
   return (
     <div className="flex min-h-screen bg-slate-50">
       <Sidebar />
@@ -11,7 +11,7 @@ export default function DashboardPage() {
         <div className="mx-auto w-full max-w-[1400px] space-y-8">
           {/* ⬇️ só o componente; nada de grid aqui */}
           <InventoryKpis />
-          <StockStatusTable />
+          <ItemsStatusTable/>
         </div>
       </main>
     </div>

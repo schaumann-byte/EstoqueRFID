@@ -1,5 +1,6 @@
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+from typing import List, Dict, Any, Optional, Tuple
 
 # Observação do modelo de estoque:
 # "Em estoque em T"  <=>  timestamp_entrada <= T  AND  (timestamp_saida IS NULL OR timestamp_saida > T)
@@ -151,42 +152,149 @@ async def get_out_of_stock_count(session: AsyncSession) -> int:
     return int(row["cnt"])
 
 
+STOCK_SUMMARY_SQL = text("""
+    SELECT
+        p.codigo,
+        p.descricao,
+        p.categoria,
+        p.marca,
+        COALESCE(
+          SUM(CASE WHEN i.timestamp_saida IS NULL THEN 1 ELSE 0 END), 0
+        ) AS estoque_total
+    FROM produtos p
+    LEFT JOIN itens i ON i.codigo_produto = p.codigo
+    GROUP BY p.codigo, p.descricao, p.categoria, p.marca
+    ORDER BY p.codigo;
+""")
 
-from typing import List, Dict, Any
+async def get_stock_summary(session: AsyncSession) -> List[Dict[str, Any]]:
+    rows = (await session.execute(STOCK_SUMMARY_SQL)).mappings().all()
+    return [
+        {
+            "codigo": r["codigo"],
+            "descricao": r["descricao"],
+            "categoria": r["categoria"],
+            "marca": r["marca"],
+            "estoque_total": int(r["estoque_total"]),
+        }
+        for r in rows
+    ]
 
-def get_stock_summary(conn) -> List[Dict[str, Any]]:
-    """
-    Resumo de estoque por produto (itens com data_saida IS NULL).
-    Tabelas:
-      - produtos(codigo PK, descricao, categoria, marca)
-      - itens(produto_codigo FK, data_saida TIMESTAMP NULL)
-    """
-    sql = """
-        SELECT
-            p.codigo,
-            p.descricao,
-            p.categoria,
-            p.marca,
-            COALESCE(COUNT(i.*) FILTER (WHERE i.data_saida IS NULL), 0) AS estoque_total
-        FROM produtos p
-        LEFT JOIN itens i ON i.produto_codigo = p.codigo
-        GROUP BY p.codigo, p.descricao, p.categoria, p.marca
-        ORDER BY p.codigo;
-    """
-    with conn.cursor() as cur:
-        cur.execute(sql)
-        rows = cur.fetchall()
 
-    result = []
-    for row in rows:
-        codigo, descricao, categoria, marca, estoque_total = row
-        result.append(
-            {
-                "codigo": codigo,
-                "descricao": descricao,
-                "categoria": categoria,
-                "marca": marca,
-                "estoque_total": int(estoque_total),
-            }
+ITEMS_BASE_SQL = """
+FROM itens i
+JOIN produtos p ON p.codigo = i.codigo_produto
+WHERE 1=1
+{where_extra}
+"""
+
+ITEMS_SELECT_SQL_TEMPLATE = """
+SELECT
+  i.id,
+  i.codigo_produto,
+  i.etiqueta_rfid,
+  i.timestamp_entrada,
+  i.data_validade,
+  i.timestamp_saida,
+  p.descricao,
+  p.marca,
+  p.categoria,
+  (i.timestamp_saida IS NULL) AS em_estoque
+{base}
+ORDER BY i.id DESC
+LIMIT :limit OFFSET :offset
+"""
+
+ITEMS_COUNT_SQL_TEMPLATE = """
+SELECT COUNT(*) AS total
+{base}
+"""
+
+def _build_where(
+    filters: Dict[str, Any]
+) -> Tuple[str, Dict[str, Any]]:  # <-- Tuple aqui
+    where_parts = []
+    params: Dict[str, Any] = {}
+
+    # somente itens em estoque
+    if filters.get("in_stock") is True:
+        where_parts.append(" AND i.timestamp_saida IS NULL")
+    elif filters.get("in_stock") is False:
+        where_parts.append(" AND i.timestamp_saida IS NOT NULL")
+
+    # busca texto
+    q = filters.get("q")
+    if q:
+        where_parts.append(
+            " AND (i.etiqueta_rfid ILIKE :q OR p.descricao ILIKE :q OR p.marca ILIKE :q OR p.categoria ILIKE :q)"
         )
-    return result
+        params["q"] = f"%{q}%"
+
+    # validade até
+    validade_ate = filters.get("validade_ate")
+    if validade_ate:
+        where_parts.append(" AND i.data_validade <= :validade_ate")
+        params["validade_ate"] = validade_ate
+
+    where_extra = "".join(where_parts)
+    if where_extra:
+        # já começamos com WHERE 1=1, então só concatenamos
+        pass
+    return where_extra, params
+
+async def get_items_page(
+    session: AsyncSession,
+    page: int = 1,
+    page_size: int = 20,
+    *,
+    q: Optional[str] = None,
+    in_stock: Optional[bool] = None,
+    validade_ate: Optional[str] = None,
+) -> Dict[str, Any]:
+    page = max(1, page)
+    page_size = max(1, min(page_size, 100))
+    offset = (page - 1) * page_size
+
+    where_extra, params = _build_where(
+        {"q": q, "in_stock": in_stock, "validade_ate": validade_ate}
+    )
+
+    # SELECT
+    select_sql = ITEMS_SELECT_SQL_TEMPLATE.format(
+        base=ITEMS_BASE_SQL.format(where_extra=where_extra)
+    )
+    items = (
+        await session.execute(
+            text(select_sql),
+            {"limit": page_size, "offset": offset, **params},
+        )
+    ).mappings().all()
+
+    # COUNT
+    count_sql = ITEMS_COUNT_SQL_TEMPLATE.format(
+        base=ITEMS_BASE_SQL.format(where_extra=where_extra)
+    )
+    total = (
+        await session.execute(text(count_sql), params)
+    ).scalar_one()
+
+    return {
+        "items": [
+            {
+                "id": r["id"],
+                "codigo_produto": r["codigo_produto"],
+                "etiqueta_rfid": r["etiqueta_rfid"],
+                "timestamp_entrada": r["timestamp_entrada"],
+                "data_validade": r["data_validade"],
+                "timestamp_saida": r["timestamp_saida"],  # <- nome padronizado
+                "descricao": r["descricao"],
+                "marca": r["marca"],
+                "categoria": r["categoria"],
+                "em_estoque": r["em_estoque"],
+            }
+            for r in items
+        ],
+        "total": int(total),
+        "page": page,
+        "page_size": page_size,
+    }

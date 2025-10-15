@@ -39,7 +39,7 @@ export default function InventoryKpis() {
     data: low,
     isLoading: l2,
     error: e2,
-  } = useSWR<LowStockSummary>("/metrics/low-stock?threshold=1", apiGet);
+  } = useSWR<LowStockSummary>("/metrics/low-stock?threshold=3", apiGet);
 
   const {
     data: near,

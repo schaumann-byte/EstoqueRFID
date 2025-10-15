@@ -93,7 +93,7 @@ type Item = {
 
 const ITEMS: Item[] = [
   { label: "Dashboard", href: "/dashboard", icon: "dashboard", section: "main" },
-  { label: "Produtos", href: "/produtos", icon: "package", section: "main" },
+  { label: "Itens", href: "/itens", icon: "package", section: "main" },
   { label: "Estoque", href: "/estoque", icon: "boxes", section: "main" },
   { label: "Fornecedores", href: "/fornecedores", icon: "truck", section: "main" },
   { label: "Movimentações", href: "/movimentacoes", icon: "arrows", section: "main" },
