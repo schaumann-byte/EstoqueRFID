@@ -1,6 +1,7 @@
-from sqlalchemy import text
+from sqlalchemy import text, bindparam, String
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Dict, Any, Optional, Tuple
+from ..schemas.metrics import OrderRow, OrdersPage, OrderStatus
 
 # Observação do modelo de estoque:
 # "Em estoque em T"  <=>  timestamp_entrada <= T  AND  (timestamp_saida IS NULL OR timestamp_saida > T)
@@ -60,8 +61,6 @@ async def get_stock_amount(session: AsyncSession) -> dict:
       }
 
 
-
-
 LOW_STOCK_SQL = text("""
 WITH
   ts_now AS (SELECT now() AS ts),
@@ -118,7 +117,6 @@ async def get_low_stock_summary(session: AsyncSession, threshold: int = 1) -> di
         "abs_change_since_last_month": abs_change,
         "pct_change_since_last_month": pct_change,
     }
-
 
 
 NEAR_EXPIRY_SQL = text("""
@@ -298,3 +296,165 @@ async def get_items_page(
         "page": page,
         "page_size": page_size,
     }
+
+
+
+ORDERS_OVERVIEW_PAGE_SQL = text("""
+SELECT
+  id,
+  om_sigla,
+  data_pedido,
+  status,
+  observacoes,
+  total_solicitada,
+  total_atendida,
+  percentual_entregue
+FROM public.vw_pedidos_overview
+WHERE (:status IS NULL OR status = :status)
+ORDER BY data_pedido DESC, id DESC
+OFFSET :offset ROWS
+FETCH NEXT :limit ROWS ONLY;
+""").bindparams(bindparam("status", type_=String))
+
+ORDERS_OVERVIEW_COUNT_SQL = text("""
+SELECT COUNT(*) AS cnt
+FROM public.vw_pedidos_overview
+WHERE (:status IS NULL OR status = :status);
+""").bindparams(bindparam("status", type_=String))
+
+
+async def get_orders_overview_page(
+    session: AsyncSession,
+    *,
+    status: Optional[OrderStatus] = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> dict:
+    page = max(page, 1)
+    page_size = max(min(page_size, 100), 1)
+    offset = (page - 1) * page_size
+
+    params = {"status": status, "offset": offset, "limit": page_size}
+
+    total = int((await session.execute(ORDERS_OVERVIEW_COUNT_SQL, params))
+                .mappings().one()["cnt"])
+
+    rows = (await session.execute(ORDERS_OVERVIEW_PAGE_SQL, params)).mappings().all()
+    items: List[OrderRow] = [dict(r) for r in rows]
+
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
+
+
+_HEADER_SQL = text("""
+SELECT
+  p.id,
+  p.status,
+  p.data_pedido,
+  p.data_entrega,
+  p.observacoes,
+  p.cadastrado_por,
+  o.id        AS om_id,
+  o.sigla     AS om_sigla,
+  o.nome      AS om_nome,
+  ov.total_solicitada,
+  ov.total_atendida,
+  ov.percentual_entregue
+FROM pedidos p
+JOIN oms o                ON o.id = p.om_id
+JOIN vw_pedidos_overview ov ON ov.id = p.id
+WHERE p.id = :pedido_id
+""")
+
+# 2.2 Linhas + Vínculos RFID (flat; agregamos em Python)
+_LINES_SQL = text("""
+SELECT
+  pi.id                      AS pedido_item_id,
+  pi.codigo_produto,
+  pr.descricao               AS produto_descricao,
+  pr.categoria               AS produto_categoria,
+  pr.marca                   AS produto_marca,
+  pi.quantidade_solicitada,
+  pi.quantidade_atendida,
+  (pi.quantidade_solicitada - pi.quantidade_atendida) AS pendente,
+
+  v.id                       AS vinculo_id,
+  v.item_id,
+  it.etiqueta_rfid,
+  v.vinculado_por,
+  v.vinculado_em,
+  v.origem_vinculo
+FROM pedido_itens pi
+JOIN produtos pr               ON pr.codigo = pi.codigo_produto
+LEFT JOIN pedido_item_vinculos v ON v.pedido_item_id = pi.id
+LEFT JOIN itens it               ON it.id = v.item_id
+WHERE pi.pedido_id = :pedido_id
+ORDER BY pi.id, v.vinculado_em NULLS LAST, v.id NULLS LAST
+""")
+
+class NotFoundError(Exception):
+    pass
+
+async def get_order_detail(session: AsyncSession, pedido_id: int) -> Dict[str, Any]:
+    # --- Header ---
+    hdr = (await session.execute(_HEADER_SQL, {"pedido_id": pedido_id})).mappings().first()
+    if not hdr:
+        raise NotFoundError(f"Pedido {pedido_id} não encontrado")
+
+    # --- Linhas (com vínculos) ---
+    rows = (await session.execute(_LINES_SQL, {"pedido_id": pedido_id})).mappings().all()
+
+    lines_dict: Dict[int, Dict[str, Any]] = {}
+    for r in rows:
+        pid = r["pedido_item_id"]
+        if pid not in lines_dict:
+            lines_dict[pid] = {
+                "pedido_item_id": pid,
+                "codigo_produto": r["codigo_produto"],
+                "produto_descricao": r["produto_descricao"],
+                "produto_categoria": r["produto_categoria"],
+                "produto_marca": r["produto_marca"],
+                "quantidade_solicitada": int(r["quantidade_solicitada"]),
+                "quantidade_atendida": int(r["quantidade_atendida"]),
+                "pendente": int(r["pendente"]),
+                "vinculos": [],
+            }
+
+        # Pode não haver vínculo (LEFT JOIN)
+        if r["item_id"] is not None:
+            lines_dict[pid]["vinculos"].append({
+                "item_id": int(r["item_id"]),
+                "etiqueta_rfid": r["etiqueta_rfid"],
+                "vinculado_por": r["vinculado_por"],
+                "vinculado_em": r["vinculado_em"],
+                "origem_vinculo": r["origem_vinculo"],
+            })
+
+    # --- Montagem do payload ---
+    detail = {
+        "header": {
+            "id": int(hdr["id"]),
+            "status": hdr["status"],
+            "data_pedido": hdr["data_pedido"],
+            "data_entrega": hdr["data_entrega"],
+            "observacoes": hdr["observacoes"],
+            "cadastrado_por": hdr["cadastrado_por"],
+        },
+        "om": {
+            "id": int(hdr["om_id"]),
+            "sigla": hdr["om_sigla"],
+            "nome": hdr["om_nome"],
+        },
+        "totals": {
+            "total_solicitada": int(hdr["total_solicitada"]),
+            "total_atendida": int(hdr["total_atendida"]),
+            "percentual_entregue": float(hdr["percentual_entregue"]),
+        },
+        "lines": list(lines_dict.values()),
+    }
+
+    return detail

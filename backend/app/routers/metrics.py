@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import date, timedelta
 from ..db import get_session
-from ..repositories.metrics_repo import get_stock_amount, get_low_stock_summary, get_near_expiry_count, get_out_of_stock_count, get_stock_summary, get_items_page
-from ..schemas.metrics import StockSummary, LowStockSummary, NearExpirySummary, OutOfStockCount, ProductStock, ItemsPage
+from ..repositories.metrics_repo import get_stock_amount, get_low_stock_summary, get_near_expiry_count, get_out_of_stock_count, get_stock_summary, get_items_page, get_orders_overview_page
+from ..schemas.metrics import StockSummary, LowStockSummary, NearExpirySummary, OutOfStockCount, ProductStock, ItemsPage, OrderStatus
 from typing import List, Optional
 
 
@@ -76,3 +76,12 @@ async def list_items(
     )
     return ItemsPage(**data)
 
+
+@router.get("/overview")
+async def list_orders_overview(
+    status: Optional[OrderStatus] = Query(None, description="aberto|entregue|cancelado"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    session: AsyncSession = Depends(get_session),
+):
+    return await get_orders_overview_page(session, status=status, page=page, page_size=page_size)

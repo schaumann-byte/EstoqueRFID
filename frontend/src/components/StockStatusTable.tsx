@@ -44,12 +44,6 @@ export default async function StockStatusTable() {
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-slate-800">
-          Status do Estoque
-        </h2>
-      </div>
-
       {/* container rolável horizontal + vertical */}
       <div className="overflow-x-auto">
         <div className="max-h-[420px] overflow-y-auto overscroll-contain">
@@ -65,7 +59,7 @@ export default async function StockStatusTable() {
             </thead>
 
             <tbody>
-              {data.map((p, idx) => {
+              {data.map((p) => {
                 const pct = percent10(p.estoque_total);
                 const color = barColor(p.estoque_total);
 
@@ -112,7 +106,6 @@ export default async function StockStatusTable() {
 
                         {/* indicador + barra cap 10 */}
                         <div className="flex w-full items-center gap-2">
-                          {/* ponto colorido (como no mock) */}
                           <span
                             className={`inline-block h-2.5 w-2.5 rounded-full ${color}`}
                             aria-hidden
@@ -148,4 +141,5 @@ export default async function StockStatusTable() {
     </div>
   );
 }
+
 

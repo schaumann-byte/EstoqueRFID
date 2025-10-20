@@ -9,7 +9,11 @@ export default function DashboardPage() {
 
       <main className="flex-1 p-6 md:p-8">
         <div className="mx-auto w-full max-w-[1400px] space-y-8">
-          {/* ⬇️ só o componente; nada de grid aqui */}
+          <div className="flex items-center justify-between mb-3 ml-1.5">
+            <div>
+              <h1 className="text-xl font-semibold text-slate-800">Visão Geral</h1>
+            </div>
+          </div>
           <InventoryKpis />
           <StockStatusTable />
         </div>

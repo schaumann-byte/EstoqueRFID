@@ -6,6 +6,7 @@ import Sidebar from "@/components/sidebar";
 import InventoryKpis from "@/components/InventoryKpis";
 import ItemsStatusTable from "@/components/ItemStatusTable";
 import ItemsHeader from "@/components/ItemHeader";
+import OrdersPanel from "@/components/OrdersPanel";
 
 export default function ItensPage({
   searchParams,
@@ -32,12 +33,9 @@ export default function ItensPage({
           <InventoryKpis />
 
           {/* Tabela de itens filtrada */}
-          <ItemsStatusTable/>
+          <OrdersPanel/>
         </div>
       </main>
     </div>
   );
 }
-
-
-

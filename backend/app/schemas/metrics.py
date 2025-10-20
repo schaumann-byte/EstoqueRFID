@@ -1,7 +1,9 @@
 from pydantic import BaseModel
 from datetime import datetime, date
-from typing import Optional, List
+from typing import Optional, List, Literal
 
+
+OrderStatus = Literal["aberto", "entregue", "cancelado"]
 
 class StockSummary(BaseModel):
     total_on_hand: int                # itens em estoque agora (etiquetas únicas)
@@ -42,13 +44,31 @@ class ItemRow(BaseModel):
     etiqueta_rfid: str
     timestamp_entrada: datetime
     data_validade: Optional[date] = None
-    timestamp_salida: Optional[datetime] = None
+    timestamp_saida: Optional[datetime] = None
     descricao: str
     marca: str
     categoria: str
 
 class ItemsPage(BaseModel):
     items: List[ItemRow]
+    total: int
+    page: int
+    page_size: int
+
+
+class OrderRow(BaseModel):
+    id: int
+    om_nome: str
+    data_pedido: str
+    status: str
+    observacoes: Optional[str]
+    total_solicitada: int
+    total_atendida: int
+    percentual_entregue: float
+
+
+class OrdersPage(BaseModel):
+    items: list[OrderRow]
     total: int
     page: int
     page_size: int
