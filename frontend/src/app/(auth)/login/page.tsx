@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useState, FormEvent } from "react";
+import { useAuth } from "@/context/AuthContext";
 
 import { useRouter } from "next/navigation";
 
@@ -10,12 +11,16 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
+  const { login } = useAuth();
+
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setLoading(true);
-    // TODO: autenticar
-    setTimeout(() => setLoading(false), 900);
-  };
+    const form = new FormData(e.currentTarget);
+    const username = String(form.get("username"));
+    const password = String(form.get("password"));
+    await login(username, password);
+    // redirecionar para dashboard
+  }
 
   const router = useRouter();
 

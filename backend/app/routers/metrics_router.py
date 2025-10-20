@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Query, Response, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import date, timedelta
 from ..db import get_session
-from ..repositories.metrics_repo import get_stock_amount, get_low_stock_summary, get_near_expiry_count, get_out_of_stock_count, get_stock_summary, get_items_page, get_orders_overview_page
-from ..schemas.metrics import StockSummary, LowStockSummary, NearExpirySummary, OutOfStockCount, ProductStock, ItemsPage, OrderStatus
+from ..repositories.metrics_repo import get_stock_amount, get_low_stock_summary, get_near_expiry_count, get_out_of_stock_count, get_stock_summary, get_items_page, get_orders_overview_page, get_order_detail, NotFoundError
+from ..schemas.metrics_schemas import StockSummary, LowStockSummary, NearExpirySummary, OutOfStockCount, ProductStock, ItemsPage, OrderStatus, OrderDetail
 from typing import List, Optional
 
 
@@ -85,3 +85,16 @@ async def list_orders_overview(
     session: AsyncSession = Depends(get_session),
 ):
     return await get_orders_overview_page(session, status=status, page=page, page_size=page_size)
+
+
+
+@router.get("/orders/{pedido_id}/detail", response_model=OrderDetail)
+async def get_order_full_detail(
+    pedido_id: int,
+    session: AsyncSession = Depends(get_session),
+) -> OrderDetail:
+    try:
+        data = await get_order_detail(session, pedido_id)
+        return OrderDetail(**data)
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))

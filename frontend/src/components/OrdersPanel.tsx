@@ -1,19 +1,21 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 type OrderStatus = "aberto" | "entregue" | "cancelado";
 type OrdersFilter = OrderStatus | "todos";
 
 type OrderRow = {
   id: number;
-  om_sigla: string;           
-  data_pedido: string;        
+  om_sigla: string;
+  data_pedido: string;
   status: OrderStatus;
   observacoes?: string | null;
   total_solicitada: number;
   total_atendida: number;
-  percentual_entregue: number; 
+  percentual_entregue: number;
 };
 
 type OrdersPage = {
@@ -71,7 +73,7 @@ async function fetchOrdersClient(
   const qp = new URLSearchParams();
   qp.set("page", String(page));
   qp.set("page_size", String(pageSize));
-  if (status !== "todos") qp.set("status", status); // backend trata ausente como “todos”
+  if (status !== "todos") qp.set("status", status);
   const url = `${base.replace(/\/$/, "")}/metrics/overview?${qp.toString()}`;
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) {
@@ -82,7 +84,8 @@ async function fetchOrdersClient(
 }
 
 export default function OrdersPanel() {
-  const [filter, setFilter] = useState<OrdersFilter>("aberto");
+  const router = useRouter();
+  const [filter, setFilter] = useState<OrdersFilter>("todos");
   const [data, setData] = useState<OrdersPage | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -154,30 +157,46 @@ export default function OrdersPanel() {
                     </tr>
                   </thead>
                   <tbody>
-                    {data.items.map((row) => (
-                      <tr key={row.id} className="bg-white align-middle border-b border-slate-200 last:border-b-0">
-                        <td className="px-4 py-3 font-medium text-slate-800">#{row.id}</td>
-                        <td className="px-4 py-3">{row.om_sigla}</td>
-                        <td className="px-4 py-3">{fmtDate(row.data_pedido)}</td>
-                        <td className="px-4 py-3"><StatusPill status={row.status} /></td>
-                        <td className="px-4 py-3 w-64">
-                          <div className="flex items-center gap-3">
-                            <div className="min-w-32 w-full">
-                              <ProgressBar value={row.percentual_entregue} />
+                    {data.items.map((row) => {
+                      const href = `/pedidos/${row.id}`;
+                      return (
+                        <tr
+                          key={row.id}
+                          onClick={() => router.push(href)}
+                          className="bg-white align-middle border-b border-slate-200 last:border-b-0 cursor-pointer hover:bg-slate-50 transition"
+                          title="Abrir detalhes do pedido"
+                        >
+                          <td className="px-4 py-3 font-medium text-slate-800">
+                            <Link
+                              href={href}
+                              className="text-slate-900 underline-offset-4 hover:underline"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              #{row.id}
+                            </Link>
+                          </td>
+                          <td className="px-4 py-3">{row.om_sigla}</td>
+                          <td className="px-4 py-3">{fmtDate(row.data_pedido)}</td>
+                          <td className="px-4 py-3"><StatusPill status={row.status} /></td>
+                          <td className="px-4 py-3 w-64">
+                            <div className="flex items-center gap-3">
+                              <div className="min-w-32 w-full">
+                                <ProgressBar value={row.percentual_entregue} />
+                              </div>
+                              <span className="tabular-nums text-slate-700">
+                                {Math.round(row.percentual_entregue)}%
+                              </span>
                             </div>
-                            <span className="tabular-nums text-slate-700">
-                              {Math.round(row.percentual_entregue)}%
-                            </span>
-                          </div>
-                          <div className="mt-1 text-xs text-slate-500">
-                            {row.total_atendida}/{row.total_solicitada} itens
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 max-w-[420px] text-slate-700 truncate">
-                          {row.observacoes ?? "—"}
-                        </td>
-                      </tr>
-                    ))}
+                            <div className="mt-1 text-xs text-slate-500">
+                              {row.total_atendida}/{row.total_solicitada} itens
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 max-w-[420px] text-slate-700 truncate">
+                            {row.observacoes ?? "—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
 
                     {data.items.length === 0 && (
                       <tr>
@@ -225,3 +244,4 @@ export default function OrdersPanel() {
     </>
   );
 }
+

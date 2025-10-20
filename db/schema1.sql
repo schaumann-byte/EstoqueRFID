@@ -76,7 +76,65 @@ CREATE TABLE IF NOT EXISTS oms (
 
 COMMIT;
 
+-- =====================================
+-- USUÁRIOS (login/cadastro com senha hash)
+-- Acrescente ao final do schema1.sql
+-- =====================================
+BEGIN;
 
+-- Case-insensitive text (garante UNIQUE ignorando maiúsculas/minúsculas)
+CREATE EXTENSION IF NOT EXISTS citext;
+
+-- Usuários do sistema
+CREATE TABLE IF NOT EXISTS users (
+    id               BIGSERIAL PRIMARY KEY,
+    -- "Nome de Guerra" do formulário
+    username         CITEXT      NOT NULL UNIQUE,
+    -- E-mail com UNIQUE case-insensitive
+    email            CITEXT      NOT NULL UNIQUE,
+    -- Posto/Graduação (por enquanto livre; depois podemos trocar por FK de uma tabela de domínio)
+    posto_graduacao  VARCHAR(40) NOT NULL,
+    -- SEMPRE hash, nunca senha em claro
+    password_hash    TEXT        NOT NULL,
+
+    -- Opcional: associação a uma OM (se fizer sentido no seu fluxo)
+    om_id            INT REFERENCES oms(id) ON DELETE SET NULL,
+
+    is_active        BOOLEAN     NOT NULL DEFAULT TRUE,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    -- Regras de sanidade
+    CONSTRAINT chk_username_not_blank   CHECK (btrim(username::text) <> ''),
+    CONSTRAINT chk_email_format         CHECK (email ~* '^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$'),
+    -- Hash costuma ser bem maior; evita strings vazias/curtas por engano
+    CONSTRAINT chk_passwordhash_length  CHECK (length(password_hash) >= 20)
+);
+
+-- Índice útil para consultas por OM
+CREATE INDEX IF NOT EXISTS idx_users_om ON users(om_id);
+
+-- Trigger para updated_at automático
+CREATE OR REPLACE FUNCTION trg_set_updated_at()
+RETURNS trigger AS $$
+BEGIN
+  NEW.updated_at := now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname = 'set_users_updated_at'
+  ) THEN
+    CREATE TRIGGER set_users_updated_at
+    BEFORE UPDATE ON users
+    FOR EACH ROW EXECUTE FUNCTION trg_set_updated_at();
+  END IF;
+END$$;
+
+COMMIT;
 
 
 

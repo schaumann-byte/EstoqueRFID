@@ -1,7 +1,7 @@
 from sqlalchemy import text, bindparam, String
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Dict, Any, Optional, Tuple
-from ..schemas.metrics import OrderRow, OrdersPage, OrderStatus
+from ..schemas.metrics_schemas import OrderRow, OrdersPage, OrderStatus
 
 # Observação do modelo de estoque:
 # "Em estoque em T"  <=>  timestamp_entrada <= T  AND  (timestamp_saida IS NULL OR timestamp_saida > T)

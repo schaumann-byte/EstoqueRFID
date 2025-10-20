@@ -1,21 +1,12 @@
-import type { Metadata } from "next";
-import "./globals.css";
+import { AuthProvider } from "@/context/AuthContext";
 
-export const metadata: Metadata = {
-  title: "Estocaê",
-  description: "Controle de Estoque Inteligente",
-};
-
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR">
-      <body className="antialiased">
-        {children}
+      <body>
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );
 }
+

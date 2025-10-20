@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from .core.config import APP_NAME
-from .routers.metrics import router as metrics_router
+from .routers.metrics_router import router as metrics_router
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title=APP_NAME)

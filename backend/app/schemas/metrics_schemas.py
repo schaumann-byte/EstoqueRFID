@@ -72,3 +72,46 @@ class OrdersPage(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class OrderDetailVinculo(BaseModel):
+    item_id: int
+    etiqueta_rfid: str
+    vinculado_por: Optional[str] = None
+    vinculado_em: Optional[datetime] = None
+    origem_vinculo: Optional[str] = None
+
+class OrderDetailLine(BaseModel):
+    pedido_item_id: int
+    codigo_produto: int
+    produto_descricao: str
+    produto_categoria: Optional[str] = None
+    produto_marca: Optional[str] = None
+    quantidade_solicitada: int
+    quantidade_atendida: int
+    pendente: int
+    vinculos: List[OrderDetailVinculo]
+
+class OrderDetailHeader(BaseModel):
+    id: int
+    status: str
+    data_pedido: datetime
+    data_entrega: Optional[datetime] = None
+    observacoes: Optional[str] = None
+    cadastrado_por: str
+
+class OrderDetailOM(BaseModel):
+    id: int
+    sigla: str
+    nome: str
+
+class OrderDetailTotals(BaseModel):
+    total_solicitada: int
+    total_atendida: int
+    percentual_entregue: float
+
+class OrderDetail(BaseModel):
+    header: OrderDetailHeader
+    om: OrderDetailOM
+    totals: OrderDetailTotals
+    lines: List[OrderDetailLine]
