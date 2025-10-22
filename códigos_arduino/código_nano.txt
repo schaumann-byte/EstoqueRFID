@@ -1,0 +1,239 @@
+#include <SPI.h>
+#include <MFRC522.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <SoftwareSerial.h>
+
+// ------------------ PINAGEM ------------------
+static const uint8_t PIN_SS  = 10; // RC522 SDA/SS
+static const uint8_t PIN_RST = 9;  // RC522 RST
+
+// Serial com ESP32 (UART)
+// ATENÇÃO: SoftwareSerial(rxPin, txPin)
+static const uint8_t NANO_RX = 3;  // <- ESP32 TX2 (GPIO17)
+static const uint8_t NANO_TX = 2;  // -> ESP32 RX2 (GPIO16) (via divisor 5V->3V3)
+
+SoftwareSerial esp(NANO_RX, NANO_TX); // RX, TX
+
+// Display I2C (troque 0x27 por 0x3F se preciso)
+LiquidCrystal_I2C lcd(0x27, 20, 4);
+
+// RFID
+MFRC522 rfid(PIN_SS, PIN_RST);
+
+// ------------------ ESTADO ------------------
+enum Mode { MODE_READ=0, MODE_WAIT=1, MODE_SWEEP=2 };
+Mode currentMode = MODE_READ;
+
+String targetUID = ""; // para MODE_WAIT
+
+#include <vector>
+#include <set>
+std::vector<String> expected; // lista alvo (SWEEP)
+std::set<String> seen;        // itens já lidos (SWEEP)
+
+unsigned long lastTagMs = 0;
+String lastTag = "";
+const unsigned long debounceMs = 700; // evita múltiplas leituras rápidas
+
+// ------------------ UTILS ------------------
+String uidToHex(const MFRC522::Uid &uid) {
+  String s = "";
+  for (byte i = 0; i < uid.size; i++) {
+    if (uid.uidByte[i] < 16) s += "0";
+    s += String(uid.uidByte[i], HEX);
+  }
+  s.toUpperCase();
+  return s;
+}
+
+void lcdHeader() {
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("Leitor RFID estoque");
+  lcd.setCursor(0,1);
+  switch (currentMode) {
+    case MODE_READ:  lcd.print("Modo: Leitura comum");   break;
+    case MODE_WAIT:  lcd.print("Modo: Varred. espec.");  break;
+    case MODE_SWEEP: lcd.print("Modo: Varred. completa");break;
+  }
+}
+
+void showLine(uint8_t row, const String &msg) {
+  lcd.setCursor(0,row);
+  // limpa linha (20 colunas)
+  lcd.print("                    ");
+  lcd.setCursor(0,row);
+  lcd.print(msg.substring(0,20));
+}
+
+bool inExpected(const String &uid) {
+  for (auto &e : expected) if (e == uid) return true;
+  return false;
+}
+
+// ------------------ COMANDOS DO ESP32 ------------------
+// Formatos aceitos (texto):
+//   MODE READ
+//   MODE WAIT <UID>
+//   LIST CLEAR
+//   LIST ADD <UID>
+//   MODE SWEEP
+void handleCommand(const String &line) {
+  String cmd = line;
+  cmd.trim();
+  if (!cmd.length()) return;
+
+  if (cmd == "MODE READ") {
+    currentMode = MODE_READ;
+    targetUID = "";
+    lcdHeader();
+    showLine(2, "Aproxime etiqueta...");
+    showLine(3, "");
+    return;
+  }
+
+  if (cmd.startsWith("MODE WAIT")) {
+    // extrai UID (se houver)
+    String rest = cmd.substring(String("MODE WAIT").length());
+    rest.trim();
+    targetUID = rest; // pode ser vazio -> espera qualquer, mas só marca FOUND se bater
+    targetUID.toUpperCase();
+    currentMode = MODE_WAIT;
+    lcdHeader();
+    showLine(2, "Alvo: " + targetUID);
+    showLine(3, "Aproxime etiqueta...");
+    return;
+  }
+
+  if (cmd == "LIST CLEAR") {
+    expected.clear();
+    seen.clear();
+    showLine(2, "Lista limpa");
+    showLine(3, "");
+    return;
+  }
+
+  if (cmd.startsWith("LIST ADD")) {
+    String uid = cmd.substring(String("LIST ADD").length());
+    uid.trim();
+    uid.toUpperCase();
+    if (uid.length() > 0) {
+      expected.push_back(uid);
+      showLine(2, "Add: " + uid);
+      showLine(3, "Total: " + String(expected.size()));
+    } else {
+      showLine(2, "UID invalido");
+    }
+    return;
+  }
+
+  if (cmd == "MODE SWEEP") {
+    currentMode = MODE_SWEEP;
+    seen.clear();
+    lcdHeader();
+    showLine(2, "Esperados: " + String(expected.size()));
+    showLine(3, "Lidos: 0/" + String(expected.size()));
+    return;
+  }
+}
+
+// ------------------ SETUP ------------------
+void setup() {
+  // Debug via USB
+  Serial.begin(115200);
+
+  // Link com ESP32
+  esp.begin(57600);
+
+  // Display
+  lcd.init();
+  lcd.backlight();
+  lcdHeader();
+  showLine(2, "Aproxime etiqueta...");
+  showLine(3, "");
+
+  // RFID
+  SPI.begin();
+  rfid.PCD_Init();
+}
+
+// ------------------ LOOP ------------------
+void loop() {
+  // Ler comandos vindos do ESP32 (linha a linha)
+  static String buf;
+  while (esp.available()) {
+    char c = esp.read();
+    if (c == '\n') {
+      handleCommand(buf);
+      buf = "";
+    } else if (c != '\r') {
+      buf += c;
+    }
+  }
+
+  // Verificar novo cartão
+  if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial()) {
+    delay(5);
+    return;
+  }
+
+  String uid = uidToHex(rfid.uid);
+
+  // Debounce da mesma etiqueta
+  unsigned long now = millis();
+  if (uid == lastTag && (now - lastTagMs) < debounceMs) {
+    rfid.PICC_HaltA();
+    rfid.PCD_StopCrypto1();
+    return;
+  }
+  lastTag = uid;
+  lastTagMs = now;
+
+  // Lógica por modo
+  switch (currentMode) {
+    case MODE_READ: {
+      // Modo 1: sempre reporta leitura
+      esp.print("READ,"); esp.print(uid); esp.print(","); esp.println(now);
+      showLine(2, "Lido: " + uid);
+      showLine(3, "OK");
+    } break;
+
+    case MODE_WAIT: {
+      // Modo 2: só "FOUND" se UID alvo
+      showLine(2, "Visto: " + uid);
+      if (targetUID.length() > 0 && uid == targetUID) {
+        esp.print("FOUND,"); esp.print(uid); esp.print(","); esp.println(now);
+        showLine(3, "Alvo encontrado!");
+      } else {
+        showLine(3, "Nao eh o alvo");
+      }
+    } break;
+
+    case MODE_SWEEP: {
+      // Modo 3: precisa cobrir toda 'expected'
+      if (expected.empty()) {
+        showLine(2, "Lista vazia");
+        showLine(3, "LIST ADD <UID>");
+      } else if (inExpected(uid) && !seen.count(uid)) {
+        seen.insert(uid);
+        esp.print("SEEN,"); esp.print(uid); esp.print(","); esp.print(seen.size()); esp.print("/"); esp.println(expected.size());
+        showLine(2, "Lido: " + uid);
+        showLine(3, "Prog " + String(seen.size()) + "/" + String(expected.size()));
+        if (seen.size() == expected.size()) {
+          esp.print("COMPLETE,"); esp.println(expected.size());
+          lcdHeader();
+          showLine(2, "Varredura completa!");
+          showLine(3, String(expected.size()) + " itens");
+        }
+      } else {
+        showLine(2, "Visto: " + uid);
+        showLine(3, "Prog " + String(seen.size()) + "/" + String(expected.size()));
+      }
+    } break;
+  }
+
+  // Finaliza conversa com o cartão
+  rfid.PICC_HaltA();
+  rfid.PCD_StopCrypto1();
+}

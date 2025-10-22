@@ -4,7 +4,10 @@ from passlib.context import CryptContext
 from app.core.config import settings
 import uuid
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(
+    schemes=["bcrypt_sha256", "bcrypt"],
+    deprecated="auto",
+)
 
 def hash_password(plain: str) -> str:
     return pwd_context.hash(plain)

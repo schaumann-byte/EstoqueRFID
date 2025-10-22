@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import type { ComponentType, SVGProps } from "react";
 import {
   LayoutGrid,
@@ -11,7 +11,10 @@ import {
   ArrowLeftRight,
   Settings,
   Users,
+  LogOut,              // <- novo ícone
 } from "lucide-react";
+import { useState } from "react";
+import { useAuth } from "@/context/AuthContext"; // <- usa o contexto de auth
 
 type Lucide = ComponentType<SVGProps<SVGSVGElement>>;
 
@@ -66,8 +69,22 @@ function NavItem({ item, active }: { item: Item; active: boolean }) {
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const { logout } = useAuth();           // <- pega logout do contexto
+  const [leaving, setLeaving] = useState(false);
+
   const main = ITEMS.filter((i) => i.section === "main");
   const config = ITEMS.filter((i) => i.section === "config");
+
+  async function handleLogout() {
+    try {
+      setLeaving(true);
+      await logout();                     // chama /api/auth/logout e limpa token no contexto
+      router.replace("/login");
+    } finally {
+      setLeaving(false);
+    }
+  }
 
   return (
     <aside
@@ -126,8 +143,8 @@ export default function Sidebar() {
         </div>
       </nav>
 
-      {/* Usuário (placeholder) */}
-      <div className="absolute inset-x-0 bottom-0 px-4 pb-5">
+      {/* Usuário + Logout */}
+      <div className="absolute inset-x-0 bottom-0 px-4 pb-5 space-y-2">
         <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
           <div className="h-8 w-8 rounded-full bg-slate-300" />
           <div className="min-w-0">
@@ -135,8 +152,26 @@ export default function Sidebar() {
             <p className="truncate text-xs text-slate-500">Admin</p>
           </div>
         </div>
+
+        <button
+          type="button"
+          onClick={handleLogout}
+          disabled={leaving}
+          className={[
+            "flex w-full items-center justify-center gap-2 rounded-xl",
+            "border border-slate-200 bg-white px-3 py-2 text-sm font-medium",
+            "text-slate-700 shadow-sm transition hover:bg-slate-50",
+            "disabled:opacity-60 disabled:cursor-not-allowed",
+          ].join(" ")}
+          aria-label="Sair da conta"
+          title="Sair"
+        >
+          <LogOut className="h-4 w-4" aria-hidden />
+          {leaving ? "Saindo..." : "Sair"}
+        </button>
       </div>
     </aside>
   );
 }
+
 

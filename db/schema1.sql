@@ -134,6 +134,21 @@ BEGIN
   END IF;
 END$$;
 
+
+-- Refresh tokens persistidos (revogação por JTI)
+CREATE TABLE IF NOT EXISTS refresh_tokens (
+  id           BIGSERIAL PRIMARY KEY,
+  user_id      BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_jti    TEXT   NOT NULL UNIQUE,
+  expires_at   TIMESTAMPTZ NOT NULL,
+  revoked_at   TIMESTAMPTZ NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_refresh_user ON refresh_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_refresh_valid ON refresh_tokens(expires_at) WHERE revoked_at IS NULL;
+
+
 COMMIT;
 
 

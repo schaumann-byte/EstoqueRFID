@@ -1,0 +1,287 @@
+/*
+  esp32_rfid_portal.ino
+  - Captive portal (AP) para receber SSID+PASS via celular
+  - Salva credenciais em Preferences
+  - Quando conectado em STA, serve UI para controlar o Nano via Serial2
+  - UI tem botões para comandos e aba "Logs" (polling /log)
+  - Usa DNSServer para "captive" durante o AP (redireciona todo host para 192.168.4.1)
+  
+  Requisitos: Arduino core for ESP32, Bibliotecas padrão WiFi, WebServer, DNSServer, Preferences.
+*/
+
+#include <WiFi.h>
+#include <WebServer.h>
+#include <DNSServer.h>
+#include <Preferences.h>
+#include <ESPmDNS.h>
+
+// Serial2 pins (ajuste se necessário)
+static const int PIN_RX2 = 16; // ESP32 RX2  <- Nano TX (use divisor no lado Nano)
+static const int PIN_TX2 = 17; // ESP32 TX2  -> Nano RX
+
+HardwareSerial Link(2);
+
+// Captive DNS
+const byte DNS_PORT = 53;
+DNSServer dnsServer;
+
+// Web server
+WebServer server(80);
+
+// Preferences (para armazenar ssid/senha)
+Preferences prefs;
+const char *PREF_NAMESPACE = "wifi";
+const char *KEY_SSID = "ssid";
+const char *KEY_PASS = "pass";
+
+// AP config while provisioning
+const char* AP_SSID = "ESP32-Config";
+const char* AP_PASS = "config2025"; // troque se quiser
+
+// State & log buffer
+String logBuf = "";
+const size_t LOG_MAX = 16*1024; // buffer de logs
+bool isAP = false;
+
+// Helper para append no log (corta quando cresce demais)
+void appendLog(const String &s) {
+  logBuf += s;
+  if (logBuf.length() > LOG_MAX) {
+    // manter apenas final
+    logBuf = logBuf.substring(logBuf.length() - LOG_MAX);
+  }
+}
+
+// Envia linha ao Nano e registra no log
+void sendToNano(const String &line) {
+  Link.print(line);
+  if (!line.endsWith("\n")) Link.print("\n");
+  appendLog("> " + line + "\n");
+}
+
+// HTML: pagina de configuracao (AP) e pagina de controle (STA)
+// Página de configuração - formulário simples
+const char CONFIG_PAGE[] PROGMEM = R"HTML(
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Configurar WiFi</title>
+<style>body{font-family:system-ui;padding:12px}label{display:block;margin-top:8px}input{padding:8px;width:100%}button{margin-top:10px;padding:10px;width:100%}</style>
+</head><body>
+<h2>Configurar rede Wi-Fi</h2>
+<form method="POST" action="/save">
+<label>SSID<br><input name="ssid" required></label>
+<label>Senha<br><input name="pass" type="password"></label>
+<button type="submit">Salvar e conectar</button>
+</form>
+<p>Após salvar, o ESP tentará conectar na rede informada e reiniciará.</p>
+</body></html>
+)HTML";
+
+// Página de controle (STA) com comandos e logs
+const char CONTROL_PAGE[] PROGMEM = R"HTML(
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RFID Reader Control</title>
+<style>
+body{font-family:system-ui;padding:12px;max-width:900px;margin:auto}
+h1{font-size:1.2rem}
+.row{display:flex;gap:8px}
+input,button,select,textarea{padding:8px;font-size:14px}
+textarea{width:100%;height:220px;resize:none}
+.cmds{display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:.6rem}
+.btn{padding:.6rem .9rem;border-radius:6px;border:1px solid #ccc;background:#f7f7f7;cursor:pointer}
+small{color:#666}
+</style>
+</head><body>
+<h1>RFID Reader — Controle</h1>
+<div>
+  <div class="cmds">
+    <button class="btn" onclick="send('MODE READ')">MODE READ</button>
+    <button class="btn" onclick="send('MODE SWEEP')">MODE SWEEP</button>
+    <button class="btn" onclick="send('LIST CLEAR')">LIST CLEAR</button>
+  </div>
+  <div style="margin-bottom:.6rem">
+    <input id="txt" placeholder="Comando livre (ex: MODE WAIT 04A1B2C3)" style="width:70%">
+    <button class="btn" onclick="send(document.getElementById('txt').value)">Enviar</button>
+  </div>
+  <div>
+    <h3>Logs</h3>
+    <textarea id="log" readonly></textarea>
+  </div>
+</div>
+<script>
+async function send(cmd){
+  if(!cmd) return;
+  await fetch('/cmd',{method:'POST',headers:{'Content-Type':'text/plain'},body:cmd});
+}
+async function poll(){
+  try {
+    const r = await fetch('/log');
+    const txt = await r.text();
+    const ta = document.getElementById('log');
+    ta.value = txt;
+    ta.scrollTop = ta.scrollHeight;
+  } catch(e){}
+}
+setInterval(poll,700);
+poll();
+</script>
+</body></html>
+)HTML";
+
+// ---------- Handlers ----------
+
+// Root: if AP -> show config page, else control page
+void handleRoot() {
+  if (isAP) {
+    server.send(200, "text/html", CONFIG_PAGE);
+  } else {
+    server.send(200, "text/html", CONTROL_PAGE);
+  }
+}
+
+// Save credentials from form (POST /save)
+void handleSave() {
+  if (!server.hasArg("ssid")) {
+    server.send(400, "text/plain", "ssid required");
+    return;
+  }
+  String ssid = server.arg("ssid");
+  String pass = server.arg("pass");
+  ssid.trim();
+  pass.trim();
+  // store in preferences
+  prefs.begin(PREF_NAMESPACE, false);
+  prefs.putString(KEY_SSID, ssid);
+  prefs.putString(KEY_PASS, pass);
+  prefs.end();
+  server.send(200, "text/html", "<html><body><h3>Salvo. Tentando conectar... aguarde e reinicie.</h3></body></html>");
+  appendLog("Credenciais salvas: " + ssid + "\n");
+  delay(500);
+  // tente conectar de imediato (async): reiniciar para simplificar fluxo
+  ESP.restart();
+}
+
+// POST /cmd -> envia comando para nano
+void handleCmd() {
+  String body = server.arg(0);
+  body.trim();
+  if (body.length() == 0) {
+    server.send(400, "text/plain", "empty body");
+    return;
+  }
+  sendToNano(body);
+  server.send(200, "text/plain", "sent");
+}
+
+// GET /log -> retorna buffer de log
+void handleLog() {
+  server.send(200, "text/plain", logBuf);
+}
+
+// Fallback (serve control page static assets if any) - not used
+void handleNotFound() {
+  server.send(404, "text/plain", "Not found");
+}
+
+// DNS redirect (captive) - redirect everything to AP IP while in AP mode
+void startCaptive() {
+  // start DNS - redirect all hostnames to 192.168.4.1
+  dnsServer.start(DNS_PORT, "*", WiFi.softAPIP());
+}
+
+// Connect WiFi as STA using stored creds. returns true if success.
+bool connectSavedWifi() {
+  prefs.begin(PREF_NAMESPACE, true); // read-only
+  String ssid = prefs.getString(KEY_SSID, "");
+  String pass = prefs.getString(KEY_PASS, "");
+  prefs.end();
+
+  if (ssid.length() == 0) {
+    appendLog("No saved SSID\n");
+    return false;
+  }
+
+  appendLog("Trying WiFi: " + ssid + "\n");
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid.c_str(), pass.c_str());
+
+  unsigned long start = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - start < 20000) {
+    delay(500);
+  }
+  if (WiFi.status() == WL_CONNECTED) {
+    appendLog("WiFi connected: " + WiFi.localIP().toString() + "\n");
+    return true;
+  } else {
+    appendLog("WiFi connect FAILED\n");
+    return false;
+  }
+}
+
+// Start AP mode and captive portal
+void startAP() {
+  WiFi.mode(WIFI_AP);
+  WiFi.softAP(AP_SSID, AP_PASS);
+  delay(200);
+  IPAddress apIP = WiFi.softAPIP(); // normalmente 192.168.4.1
+  appendLog("AP started: " + apIP.toString() + " SSID:" + String(AP_SSID) + "\n");
+  startCaptive();
+  isAP = true;
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(200);
+  appendLog("ESP32 boot\n");
+
+  // Serial2 for Nano
+  Link.begin(57600, SERIAL_8N1, PIN_RX2, PIN_TX2);
+
+  // Try to connect saved wifi
+  bool ok = connectSavedWifi();
+  if (!ok) {
+    // start captive AP
+    startAP();
+  } else {
+    isAP = false;
+  }
+
+  // Start mDNS when in STA (useful)
+  if (!isAP && MDNS.begin("esp32")) {
+    appendLog("mDNS started: esp32.local\n");
+  }
+
+  // Setup web routes
+  server.on("/", HTTP_GET, handleRoot);
+  server.on("/save", HTTP_POST, handleSave);
+  server.on("/cmd", HTTP_POST, handleCmd);
+  server.on("/log", HTTP_GET, handleLog);
+  server.onNotFound(handleNotFound);
+  server.begin();
+  appendLog("HTTP server started\n");
+}
+
+void loop() {
+  // If AP mode, process DNS server
+  if (isAP) dnsServer.processNextRequest();
+
+  server.handleClient();
+
+  // Relay Serial2 -> log (messages from Nano)
+  while (Link.available()) {
+    char c = Link.read();
+    appendLog(String(c));
+  }
+
+  // Optional: if STA and WiFi disconnected, try reconnect
+  if (!isAP && WiFi.status() != WL_CONNECTED) {
+    appendLog("WiFi disconnected, trying reconnect\n");
+    if (!connectSavedWifi()) {
+      // fallback to AP
+      appendLog("Switching to AP mode\n");
+      startAP();
+    } else {
+      // restart server and mDNS
+      if (MDNS.begin("esp32")) appendLog("mDNS restarted\n");
+    }
+  }
+}

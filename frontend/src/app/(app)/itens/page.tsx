@@ -1,7 +1,6 @@
 // app/itens/page.tsx (Server Component)
 
 export const dynamic = 'force-dynamic'; // ou export const revalidate = 0;
-
 import Sidebar from "@/components/sidebar";
 import InventoryKpis from "@/components/InventoryKpis";
 import ItemsStatusTable from "@/components/ItemStatusTable";

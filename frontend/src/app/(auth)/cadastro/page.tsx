@@ -47,7 +47,8 @@ export default function CadastroPage() {
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!passOk) return;
+    if (!passOk || loading) return;
+
     setLoading(true);
     setError(null);
 
@@ -65,40 +66,50 @@ export default function CadastroPage() {
       });
 
       if (!signupResp.ok) {
-        const err = await signupResp.json().catch(() => ({}));
-        throw new Error(err.detail ?? "Falha ao criar conta");
+        let msg = "Falha ao criar conta";
+        try {
+          const err = await signupResp.json();
+          // mensagens comuns do backend
+          if (err?.detail) msg = err.detail;
+          if (signupResp.status === 409) {
+            // conflito / já existe
+            msg =
+              typeof err?.detail === "string"
+                ? err.detail
+                : "E-mail ou nome de guerra já cadastrado.";
+          }
+          if (signupResp.status === 422) {
+            msg = "Dados inválidos. Verifique os campos.";
+          }
+        } catch {}
+        throw new Error(msg);
       }
 
       // 2) LOGIN automático (usa route handler do Next para setar cookie httpOnly de refresh)
       const loginResp = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: username.trim(), password }),
+        // LOGIN POR E-MAIL (ajuste importante)
+        body: JSON.stringify({ email: email.trim(), password }),
       });
 
       if (!loginResp.ok) {
-        // se por algum motivo o login automático falhar, manda pra tela de login
+        // se o login automático falhar, manda pra tela de login já marcando "registered"
         router.replace("/login?registered=1");
         return;
       }
 
-      // 3) Redireciona para a área logada (ajuste a rota)
+      // 3) Redireciona para a área logada
       router.replace("/dashboard");
     } catch (err: any) {
-      setError(err.message ?? "Erro inesperado no cadastro");
+      setError(err?.message ?? "Erro inesperado no cadastro");
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <main
-      className="
-        min-h-dvh w-full
-        bg-radial-[at_50%_75%] from-slate-600 via-slate-800 to-slate-900 to-90%
-        flex items-center justify-center p-4
-      "
-    >
+    <main className="min-h-dvh w-full bg-radial-[at_50%_75%] from-slate-600 via-slate-800 to-slate-900 to-90% flex items-center justify-center p-4">
       <div className="mx-auto flex w-full max-w-5xl overflow-hidden rounded-xl bg-white shadow-2xl">
         {/* Left - Image */}
         <div className="relative hidden w-[44%] md:block">
@@ -313,4 +324,5 @@ export default function CadastroPage() {
     </main>
   );
 }
+
 

@@ -8,21 +8,29 @@ import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
+  const router = useRouter();
+  const { login } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-
-  const { login } = useAuth();
+  const [err, setErr] = useState<string | null>(null);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    setErr(null);
+    setLoading(true);
     const form = new FormData(e.currentTarget);
-    const username = String(form.get("username"));
-    const password = String(form.get("password"));
-    await login(username, password);
-    // redirecionar para dashboard
-  }
+    const email = String(form.get("email") ?? "");
+    const password = String(form.get("password") ?? "");
 
-  const router = useRouter();
+    try {
+      await login(email, password);
+      router.push("/dashboard");
+    } catch (e) {
+      setErr("Falha no login. Verifique e-mail e senha.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <main className="min-h-dvh w-full bg-radial-[at_50%_75%] from-slate-600 via-slate-800 to-slate-900 to-90% flex items-center justify-center p-4">
@@ -30,13 +38,13 @@ export default function LoginPage() {
       <div className="mx-auto flex w-full max-w-5xl overflow-hidden rounded-xl bg-white shadow-2xl">
         {/* Left - Image */}
         <div className="relative hidden w-[44%] md:block">
-          <Image
+          {/* <Image
             src="/warehouse-worker.jpg"
             alt="Trabalhador em armazém"
             fill
             priority
             className="object-cover"
-          />
+          /> */}
         </div>
 
         {/* Right - Form */}
@@ -67,6 +75,7 @@ export default function LoginPage() {
                 {/* Email */}
                 <div className="space-y-1.5">
                 <label
+                  
                     htmlFor="email"
                     className="block text-sm font-medium text-slate-700"
                 >
@@ -75,6 +84,7 @@ export default function LoginPage() {
                 <input
                     id="email"
                     type="email"
+                    name = 'email'
                     required
                     placeholder="seu@email.com"
                     className="block w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-slate-900 shadow-sm outline-none ring-0 transition focus:border-slate-300 focus:ring-2 focus:ring-slate-200"
@@ -92,6 +102,7 @@ export default function LoginPage() {
                 <div className="relative">
                     <input
                     id="password"
+                    name = "pasword"
                     type={showPassword ? "text" : "password"}
                     required
                     placeholder="••••••••"
@@ -157,10 +168,6 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              onClick={() => {
-                    setLoading(true);
-                    router.push("/dashboard"); // ajuste a rota se for diferente
-              }}
               className="w-full rounded-md bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
             >
               {loading ? "Entrando..." : "Entrar"}

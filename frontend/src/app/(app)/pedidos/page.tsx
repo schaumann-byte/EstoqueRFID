@@ -33,7 +33,7 @@ export default function ItensPage({
           <InventoryKpis />
 
           {/* Tabela de itens filtrada */}
-          <OrdersPanel/>
+          <OrdersPanel  />
         </div>
       </main>
     </div>

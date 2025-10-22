@@ -1,5 +1,5 @@
 # app/auth/router.py
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status  # <— sem vírgula no final
 from jose import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,7 +9,10 @@ from app.auth.repo import (
     get_user_by_username, get_user_by_email, create_user,
     save_refresh, is_refresh_revoked, revoke_refresh
 )
-from app.core.security import hash_password, verify_password, create_access_token, create_refresh_token, decode_token
+from app.core.security import (
+    hash_password, verify_password,
+    create_access_token, create_refresh_token, decode_token,
+)
 from app.auth.deps import get_current_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -32,14 +35,16 @@ async def signup(payload: SignupIn, session: AsyncSession = Depends(get_session)
 
 @router.post("/login", response_model=TokenPair)
 async def login(payload: LoginIn, session: AsyncSession = Depends(get_session)):
-    user = await get_user_by_username(session, payload.username)
+    user = await get_user_by_email(session, payload.email)
     if not user or not verify_password(payload.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Credenciais inválidas")
 
-    access = create_access_token(sub=user["username"])
-    refresh, jti, exp = create_refresh_token(sub=user["username"])
+    # use o id como "sub" do JWT
+    access = create_access_token(sub=str(user["id"]))
+    refresh, jti, exp = create_refresh_token(sub=str(user["id"]))
     await save_refresh(session, user_id=user["id"], jti=jti, exp=exp)
-    return {"access_token": access, "refresh_token": refresh}
+
+    return {"access_token": access, "refresh_token": refresh, "token_type": "bearer"}
 
 @router.get("/me", response_model=UserOut)
 async def me(current=Depends(get_current_user)):

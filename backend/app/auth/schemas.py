@@ -13,7 +13,7 @@ class SignupIn(BaseModel):
     password: StrSenha
 
 class LoginIn(BaseModel):
-    username: str
+    email: EmailStr
     password: str
 
 class UserOut(BaseModel):
@@ -30,4 +30,3 @@ class TokenPair(BaseModel):
 class AccessToken(BaseModel):
     access_token: str
     token_type: str = "bearer"
-
