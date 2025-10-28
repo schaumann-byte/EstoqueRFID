@@ -10,7 +10,6 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 export default function CadastroPage() {
   const router = useRouter();
 
-  // form state
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [rank, setRank] = useState("");
@@ -18,13 +17,11 @@ export default function CadastroPage() {
   const [confirm, setConfirm] = useState("");
   const [terms, setTerms] = useState(false);
 
-  // ui state
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // regras de senha
   const hasMin = password.length >= 8;
   const hasLettersAndNumbers = /[A-Za-z]/.test(password) && /\d/.test(password);
   const passOk = hasMin && hasLettersAndNumbers && password === confirm && terms;
@@ -69,14 +66,11 @@ export default function CadastroPage() {
         let msg = "Falha ao criar conta";
         try {
           const err = await signupResp.json();
-          // mensagens comuns do backend
-          if (err?.detail) msg = err.detail;
+          if (err?.detail) {
+            msg = typeof err.detail === "string" ? err.detail : "Erro ao criar conta";
+          }
           if (signupResp.status === 409) {
-            // conflito / já existe
-            msg =
-              typeof err?.detail === "string"
-                ? err.detail
-                : "E-mail ou nome de guerra já cadastrado.";
+            msg = "E-mail ou nome de guerra já cadastrado.";
           }
           if (signupResp.status === 422) {
             msg = "Dados inválidos. Verifique os campos.";
@@ -85,21 +79,24 @@ export default function CadastroPage() {
         throw new Error(msg);
       }
 
-      // 2) LOGIN automático (usa route handler do Next para setar cookie httpOnly de refresh)
+      // 2) LOGIN automático via route handler (usando EMAIL)
       const loginResp = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // LOGIN POR E-MAIL (ajuste importante)
-        body: JSON.stringify({ email: email.trim(), password }),
+        body: JSON.stringify({
+          email: email.trim(),
+          password,
+        }),
+        credentials: "include",
       });
 
       if (!loginResp.ok) {
-        // se o login automático falhar, manda pra tela de login já marcando "registered"
+        // Se falhar, redireciona para login com mensagem
         router.replace("/login?registered=1");
         return;
       }
 
-      // 3) Redireciona para a área logada
+      // 3) Sucesso: vai pro dashboard
       router.replace("/dashboard");
     } catch (err: any) {
       setError(err?.message ?? "Erro inesperado no cadastro");
@@ -109,7 +106,7 @@ export default function CadastroPage() {
   }
 
   return (
-    <main className="min-h-dvh w-full bg-radial-[at_50%_75%] from-slate-600 via-slate-800 to-slate-900 to-90% flex items-center justify-center p-4">
+    <main className="min-h-dvh w-full bg-gradient-to-br from-slate-600 via-slate-800 to-slate-900 flex items-center justify-center p-4">
       <div className="mx-auto flex w-full max-w-5xl overflow-hidden rounded-xl bg-white shadow-2xl">
         {/* Left - Image */}
         <div className="relative hidden w-[44%] md:block">
@@ -131,11 +128,11 @@ export default function CadastroPage() {
           <form onSubmit={onSubmit} className="space-y-5">
             {/* Nome de Guerra */}
             <div className="space-y-1.5">
-              <label htmlFor="firstName" className="block text-sm font-medium text-slate-700">
+              <label htmlFor="username" className="block text-sm font-medium text-slate-700">
                 Nome de Guerra:
               </label>
               <input
-                id="firstName"
+                id="username"
                 type="text"
                 required
                 placeholder="João"
@@ -169,7 +166,6 @@ export default function CadastroPage() {
               <div className="relative">
                 <select
                   id="rank"
-                  name="rank"
                   required
                   value={rank}
                   onChange={(e) => setRank(e.target.value)}
@@ -184,8 +180,6 @@ export default function CadastroPage() {
                     </option>
                   ))}
                 </select>
-
-                {/* Chevron */}
                 <svg
                   aria-hidden="true"
                   className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400"
@@ -237,8 +231,6 @@ export default function CadastroPage() {
                   )}
                 </button>
               </div>
-
-              {/* dicas da senha */}
               <ul className="mt-1 text-xs text-slate-500 space-y-0.5">
                 <li className={hasMin ? "text-green-700" : ""}>• Mínimo 8 caracteres</li>
                 <li className={hasLettersAndNumbers ? "text-green-700" : ""}>• Letras e números</li>

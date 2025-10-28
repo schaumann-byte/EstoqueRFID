@@ -4,19 +4,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 from ..db import get_session
 from ..repositories.metrics_repo import update_item_heartbeat, bulk_update_item_heartbeat
+from datetime import datetime
 
 router = APIRouter(prefix="/rfid", tags=["rfid"])
 
 class HeartbeatIn(BaseModel):
     etiqueta_rfid: str
-    origem: Optional[str] = None            # ex: "porta-A", "esp32-01"
-    evento: Optional[str] = None            # "READ" | "SEEN" | "FOUND" (opcional, só p/ log)
+    origem: Optional[str] = None            
+    evento: Optional[str] = None            
 
 class HeartbeatOut(BaseModel):
     id: int
     codigo_produto: int
     etiqueta_rfid: str
-    ultima_verificacao: str
+    ultima_verificacao: datetime
     origem_ultima_verificacao: Optional[str] = None
     em_estoque: bool
 
@@ -27,7 +28,6 @@ async def heartbeat(
 ):
     row = await update_item_heartbeat(session, payload.etiqueta_rfid, payload.origem)
     if not row:
-        # 404 se não existe; 409 se está fora de estoque (ver abaixo)
         raise HTTPException(status_code=404, detail="RFID não encontrado ou não está em estoque")
     return row
 

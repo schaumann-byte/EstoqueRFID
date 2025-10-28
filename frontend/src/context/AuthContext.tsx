@@ -1,60 +1,122 @@
-// src/context/AuthContext.tsx
 "use client";
-import { createContext, useContext, useCallback, useState } from "react";
+import { createContext, useContext, useCallback, useState, useEffect, useRef } from "react";
 
 type AuthContextType = {
   accessToken: string | null;
+  isLoading: boolean;
+  isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-  fetchWithAuth: (input: RequestInfo, init?: RequestInit) => Promise<Response>;
+  refreshAccessToken: () => Promise<string | null>;
 };
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const isRefreshing = useRef(false);
+
+  // Tenta restaurar sessão ao montar (APENAS UMA VEZ)
+  useEffect(() => {
+    async function restore() {
+      // Evita múltiplas tentativas simultâneas
+      if (isRefreshing.current) return;
+      
+      try {
+        isRefreshing.current = true;
+        const r = await fetch("/api/auth/refresh", {
+          method: "POST",
+          credentials: "include",
+        });
+        
+        if (r.ok) {
+          const data = await r.json();
+          setAccessToken(data.access_token);
+        }
+      } catch (err) {
+        console.error("Falha ao restaurar sessão:", err);
+      } finally {
+        isRefreshing.current = false;
+        setIsLoading(false);
+      }
+    }
+    
+    restore();
+  }, []); // Array vazio = executa APENAS ao montar
+
+  const refreshAccessToken = useCallback(async (): Promise<string | null> => {
+    // Evita refresh simultâneos
+    if (isRefreshing.current) {
+      return accessToken;
+    }
+
+    try {
+      isRefreshing.current = true;
+      const r = await fetch("/api/auth/refresh", {
+        method: "POST",
+        credentials: "include",
+      });
+      
+      if (r.ok) {
+        const data = await r.json();
+        setAccessToken(data.access_token);
+        return data.access_token;
+      }
+      
+      // Refresh falhou, limpa token
+      setAccessToken(null);
+      return null;
+    } catch (err) {
+      console.error("Erro no refresh:", err);
+      setAccessToken(null);
+      return null;
+    } finally {
+      isRefreshing.current = false;
+    }
+  }, [accessToken]);
 
   const login = useCallback(async (email: string, password: string) => {
     const r = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
+      credentials: "include",
     });
+    
     if (!r.ok) {
       const body = await r.json().catch(() => ({}));
-      throw new Error(body?.detail || "Login failed");
+      throw new Error(body?.detail || "Login falhou");
     }
-    const data = await r.json(); // { access_token, token_type }
+    
+    const data = await r.json();
     setAccessToken(data.access_token);
   }, []);
 
   const logout = useCallback(async () => {
-    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
-    setAccessToken(null);
+    try {
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch (err) {
+      console.error("Erro no logout:", err);
+    } finally {
+      setAccessToken(null);
+    }
   }, []);
 
-  const fetchWithAuth = useCallback(
-    async (input: RequestInfo, init?: RequestInit) => {
-      const headers = new Headers(init?.headers || {});
-      if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
-      const res = await fetch(input, { ...init, headers });
-      if (res.status === 401) {
-        // tenta refresh
-        const rr = await fetch("/api/auth/refresh", { method: "POST" });
-        if (rr.ok) {
-          const d = await rr.json();
-          setAccessToken(d.access_token);
-          headers.set("Authorization", `Bearer ${d.access_token}`);
-          return fetch(input, { ...init, headers });
-        }
-      }
-      return res;
-    },
-    [accessToken]
-  );
-
   return (
-    <AuthContext.Provider value={{ accessToken, login, logout, fetchWithAuth }}>
+    <AuthContext.Provider
+      value={{
+        accessToken,
+        isLoading,
+        isAuthenticated: !!accessToken,
+        login,
+        logout,
+        refreshAccessToken,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
@@ -62,7 +124,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export const useAuth = () => {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
+  if (!ctx) throw new Error("useAuth deve ser usado dentro de AuthProvider");
   return ctx;
 };
 

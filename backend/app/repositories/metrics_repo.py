@@ -194,6 +194,7 @@ SELECT
   i.timestamp_entrada,
   i.data_validade,
   i.timestamp_saida,
+  i.ultima_verificacao,            -- 👈 novo campo
   p.descricao,
   p.marca,
   p.categoria,
@@ -210,7 +211,7 @@ SELECT COUNT(*) AS total
 
 def _build_where(
     filters: Dict[str, Any]
-) -> Tuple[str, Dict[str, Any]]:  # <-- Tuple aqui
+) -> Tuple[str, Dict[str, Any]]:
     where_parts = []
     params: Dict[str, Any] = {}
 
@@ -235,10 +236,8 @@ def _build_where(
         params["validade_ate"] = validade_ate
 
     where_extra = "".join(where_parts)
-    if where_extra:
-        # já começamos com WHERE 1=1, então só concatenamos
-        pass
     return where_extra, params
+
 
 async def get_items_page(
     session: AsyncSession,
@@ -261,7 +260,7 @@ async def get_items_page(
     select_sql = ITEMS_SELECT_SQL_TEMPLATE.format(
         base=ITEMS_BASE_SQL.format(where_extra=where_extra)
     )
-    items = (
+    rows = (
         await session.execute(
             text(select_sql),
             {"limit": page_size, "offset": offset, **params},
@@ -272,9 +271,7 @@ async def get_items_page(
     count_sql = ITEMS_COUNT_SQL_TEMPLATE.format(
         base=ITEMS_BASE_SQL.format(where_extra=where_extra)
     )
-    total = (
-        await session.execute(text(count_sql), params)
-    ).scalar_one()
+    total = (await session.execute(text(count_sql), params)).scalar_one()
 
     return {
         "items": [
@@ -284,18 +281,20 @@ async def get_items_page(
                 "etiqueta_rfid": r["etiqueta_rfid"],
                 "timestamp_entrada": r["timestamp_entrada"],
                 "data_validade": r["data_validade"],
-                "timestamp_saida": r["timestamp_saida"],  # <- nome padronizado
+                "timestamp_saida": r["timestamp_saida"],
+                "ultima_verificacao": r["ultima_verificacao"],  
                 "descricao": r["descricao"],
                 "marca": r["marca"],
                 "categoria": r["categoria"],
                 "em_estoque": r["em_estoque"],
             }
-            for r in items
+            for r in rows
         ],
         "total": int(total),
         "page": page,
         "page_size": page_size,
     }
+
 
 
 

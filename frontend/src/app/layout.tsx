@@ -1,12 +1,27 @@
+// app/layout.tsx
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
-import './globals.css'
 
+const inter = Inter({ subsets: ["latin"] });
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export const metadata: Metadata = {
+  title: "Sistema de Estoque",
+  description: "Controle de Estoque Inteligente com RFID",
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="pt-BR">
-      <body>
-        <AuthProvider>{children}</AuthProvider>
+      <body className={inter.className}>
+        <AuthProvider>
+          {children}
+        </AuthProvider>
       </body>
     </html>
   );

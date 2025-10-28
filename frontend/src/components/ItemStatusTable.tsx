@@ -12,6 +12,7 @@ export type ItemRow = {
   timestamp_entrada: string;
   data_validade?: string | null;
   timestamp_saida?: string | null; // NULL => em estoque
+  ultima_verificacao?: string | null; // 👈 ADICIONADO
   descricao: string;
   marca: string;
   categoria: string;
@@ -51,7 +52,6 @@ function fmtDateTime(val: string) {
     minute: "2-digit",
   }).format(d);
 }
-
 
 function statusInfo(timestamp_saida?: string | null) {
   const outside = hasSaida(timestamp_saida);
@@ -193,7 +193,7 @@ export default function ItemsPanel() {
                     <th className="px-4 py-2">Descrição</th>
                     <th className="px-4 py-2">Marca</th>
                     <th className="px-4 py-2">Status</th>
-                    <th className="px-4 py-2">Data</th> 
+                    <th className="px-4 py-2">Data</th>
                   </tr>
                 </thead>
 
@@ -202,22 +202,47 @@ export default function ItemsPanel() {
                     const st = statusInfo(it.timestamp_saida);
                     const inside = st.inside;
 
-                    // Define label e valor da data a exibir
-                    let dateLabel = inside ? "Validade" : "Saída";
-                    let dateValue = "—";
+                    // 👉 para "dentro do estoque": mostra Validade e Últ. verificação
+                    // 👉 para "fora do estoque": mostra Saída (como já estava)
+                    let content: React.ReactNode;
 
                     if (inside) {
-                      if (!isBlankish(it.data_validade)) {
-                        dateValue = fmtDate(it.data_validade as string);
-                      } else {
-                        dateValue = "Sem validade";
-                      }
+                      const validade = !isBlankish(it.data_validade)
+                        ? fmtDate(it.data_validade as string)
+                        : "Sem validade";
+
+                      const lastCheck = !isBlankish(it.ultima_verificacao)
+                        ? fmtDateTime(it.ultima_verificacao as string)
+                        : "Nunca verificado";
+
+                      content = (
+                        <div className="flex flex-col gap-0.5 text-sm text-slate-700">
+                          <div className="flex items-center gap-2">
+                            <CalendarDays className="h-4 w-4 shrink-0" />
+                            <span className="whitespace-nowrap">
+                              <span className="font-medium">Validade:</span> {validade}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <CalendarDays className="h-4 w-4 shrink-0" />
+                            <span className="whitespace-nowrap">
+                              <span className="font-medium">Últ. verificação:</span> {lastCheck}
+                            </span>
+                          </div>
+                        </div>
+                      );
                     } else {
-                      if (!isBlankish(it.timestamp_saida)) {
-                        dateValue = fmtDateTime(it.timestamp_saida as string);
-                      } else {
-                        dateValue = "—";
-                      }
+                      const saida = !isBlankish(it.timestamp_saida)
+                        ? fmtDateTime(it.timestamp_saida as string)
+                        : "—";
+                      content = (
+                        <div className="flex items-center gap-2 text-sm text-slate-700">
+                          <CalendarDays className="h-4 w-4 shrink-0" />
+                          <span className="whitespace-nowrap">
+                            <span className="font-medium">Saída:</span> {saida}
+                          </span>
+                        </div>
+                      );
                     }
 
                     return (
@@ -256,12 +281,7 @@ export default function ItemsPanel() {
                         </td>
 
                         <td className="px-4 py-3">
-                          <div className="flex items-center gap-2 text-sm text-slate-700">
-                            <CalendarDays className="h-4 w-4 shrink-0" />
-                            <span className="whitespace-nowrap">
-                              <span className="font-medium">{dateLabel}:</span> {dateValue}
-                            </span>
-                          </div>
+                          {content}
                         </td>
                       </tr>
                     );
@@ -296,6 +316,7 @@ export default function ItemsPanel() {
     </>
   );
 }
+
 
 
 

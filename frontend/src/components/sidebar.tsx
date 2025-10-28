@@ -15,7 +15,6 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "@/context/AuthContext"; // <- usa o contexto de auth
-
 type Lucide = ComponentType<SVGProps<SVGSVGElement>>;
 
 const ICONS: Record<

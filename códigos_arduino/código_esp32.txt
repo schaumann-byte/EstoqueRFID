@@ -14,6 +14,7 @@
 #include <DNSServer.h>
 #include <Preferences.h>
 #include <ESPmDNS.h>
+#include <HTTPClient.h>
 
 // Serial2 pins (ajuste se necessário)
 static const int PIN_RX2 = 16; // ESP32 RX2  <- Nano TX (use divisor no lado Nano)
@@ -43,6 +44,9 @@ String logBuf = "";
 const size_t LOG_MAX = 16*1024; // buffer de logs
 bool isAP = false;
 
+const char* API_BASE = "http://192.168.32.91:8000";  
+const char* API_HEARTBEAT = "/rfid/heartbeat";
+
 // Helper para append no log (corta quando cresce demais)
 void appendLog(const String &s) {
   logBuf += s;
@@ -50,6 +54,42 @@ void appendLog(const String &s) {
     // manter apenas final
     logBuf = logBuf.substring(logBuf.length() - LOG_MAX);
   }
+}
+
+// Id de origem (útil p/ saber de qual leitor veio)
+String origemId() {
+  uint64_t chipid = ESP.getEfuseMac();
+  char buf[32];
+  snprintf(buf, sizeof(buf), "esp32-%04X", (uint16_t)(chipid & 0xFFFF));
+  return String(buf);
+}
+
+bool postHeartbeat(const String& uid, const String& origem) {
+  if (WiFi.status() != WL_CONNECTED) {
+    appendLog("HTTP skip (WiFi OFF)\n");
+    return false;
+  }
+  HTTPClient http;
+  String url = String(API_BASE) + String(API_HEARTBEAT);
+  http.begin(url);
+  http.addHeader("Content-Type", "application/json");
+
+  // corpo JSON
+  String body = "{\"etiqueta_rfid\":\"" + uid + "\",\"origem\":\"" + origem + "\"}";
+  int code = http.POST(body);
+
+  // logs
+  if (code > 0) {
+    appendLog("POST " + url + " [" + String(code) + "] uid=" + uid + "\n");
+  } else {
+    appendLog("POST fail: " + String(http.errorToString(code).c_str()) + "\n");
+  }
+
+  // opcional: ler resposta
+  // String resp = http.getString(); appendLog(resp + "\n");
+
+  http.end();
+  return code >= 200 && code < 300;
 }
 
 // Envia linha ao Nano e registra no log
@@ -266,10 +306,38 @@ void loop() {
 
   server.handleClient();
 
-  // Relay Serial2 -> log (messages from Nano)
   while (Link.available()) {
+    static String line;
     char c = Link.read();
-    appendLog(String(c));
+    if (c == '\n') {
+      appendLog(line + "\n");
+
+      // Parse simples: tipo,uid,resto
+      String s = line;
+      s.trim();
+      if (s.length()) {
+        int p1 = s.indexOf(',');
+        String kind = (p1 >= 0) ? s.substring(0, p1) : s;
+        String uid = "";
+
+        if (p1 >= 0) {
+          int p2 = s.indexOf(',', p1 + 1);
+          if (p2 < 0) p2 = s.length();
+          uid = s.substring(p1 + 1, p2);
+          uid.trim();
+          uid.toUpperCase();
+        }
+
+        // Dispare heartbeat para tipos de interesse
+        if (kind == "READ" || kind == "FOUND" || kind == "SEEN") {
+          postHeartbeat(uid, origemId());
+        }
+      }
+
+      line = "";
+    } else if (c != '\r') {
+      line += c;
+    }
   }
 
   // Optional: if STA and WiFi disconnected, try reconnect

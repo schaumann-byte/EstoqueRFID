@@ -1,7 +1,8 @@
 # app/auth/router.py
-from fastapi import APIRouter, Depends, HTTPException, status  # <— sem vírgula no final
+from fastapi import APIRouter, Depends, HTTPException, Response, Cookie
 from jose import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Optional
 
 from app.db import get_session
 from app.auth.schemas import SignupIn, LoginIn, UserOut, TokenPair, AccessToken
@@ -17,6 +18,16 @@ from app.auth.deps import get_current_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+# Configurações de cookie centralizadas
+COOKIE_CONFIG = {
+    "key": "refresh_token",
+    "httponly": True,
+    "samesite": "lax",
+    "secure": False,  # True em produção
+    "path": "/",
+    "max_age": 60 * 60 * 24 * 7,  # 7 dias
+}
+
 @router.post("/signup", response_model=UserOut, status_code=201)
 async def signup(payload: SignupIn, session: AsyncSession = Depends(get_session)):
     if await get_user_by_username(session, payload.username):
@@ -31,20 +42,37 @@ async def signup(payload: SignupIn, session: AsyncSession = Depends(get_session)
         posto_graduacao=payload.posto_graduacao,
         password_hash=hash_password(payload.password),
     )
-    return {"id": user["id"], "username": user["username"], "email": user["email"], "posto_graduacao": user["posto_graduacao"]}
+    return {
+        "id": user["id"],
+        "username": user["username"],
+        "email": user["email"],
+        "posto_graduacao": user["posto_graduacao"]
+    }
 
 @router.post("/login", response_model=TokenPair)
-async def login(payload: LoginIn, session: AsyncSession = Depends(get_session)):
+async def login(
+    payload: LoginIn,
+    response: Response,
+    session: AsyncSession = Depends(get_session)
+):
     user = await get_user_by_email(session, payload.email)
     if not user or not verify_password(payload.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Credenciais inválidas")
+    
+    if not user.get("is_active"):
+        raise HTTPException(status_code=403, detail="Usuário inativo")
 
-    # use o id como "sub" do JWT
     access = create_access_token(sub=str(user["id"]))
     refresh, jti, exp = create_refresh_token(sub=str(user["id"]))
     await save_refresh(session, user_id=user["id"], jti=jti, exp=exp)
 
-    return {"access_token": access, "refresh_token": refresh, "token_type": "bearer"}
+    response.set_cookie(**COOKIE_CONFIG, value=refresh)
+
+    return {
+        "access_token": access,
+        "refresh_token": refresh,
+        "token_type": "bearer"
+    }
 
 @router.get("/me", response_model=UserOut)
 async def me(current=Depends(get_current_user)):
@@ -56,30 +84,48 @@ async def me(current=Depends(get_current_user)):
     }
 
 @router.post("/refresh", response_model=AccessToken)
-async def refresh_token(refresh_token: str, session: AsyncSession = Depends(get_session)):
+async def refresh_token(
+    session: AsyncSession = Depends(get_session),
+    refresh_token: Optional[str] = Cookie(default=None),
+):
+    if not refresh_token:
+        raise HTTPException(status_code=401, detail="Refresh token ausente")
+
     try:
         payload = decode_token(refresh_token)
-        username = payload.get("sub")
+        sub = payload.get("sub")
         jti = payload.get("jti")
-        if not username or not jti:
-            raise HTTPException(status_code=401, detail="Refresh inválido")
+        if not sub or not jti:
+            raise HTTPException(status_code=401, detail="Token inválido")
     except JWTError:
-        raise HTTPException(status_code=401, detail="Refresh expirado/inválido")
+        raise HTTPException(status_code=401, detail="Token expirado ou inválido")
 
     if await is_refresh_revoked(session, jti):
-        raise HTTPException(status_code=401, detail="Refresh revogado ou desconhecido")
+        raise HTTPException(status_code=401, detail="Token revogado")
 
-    access = create_access_token(sub=username)
-    return {"access_token": access}
+    access = create_access_token(sub=sub)
+    return {"access_token": access, "token_type": "bearer"}
 
 @router.post("/logout")
-async def logout(refresh_token: str, session: AsyncSession = Depends(get_session)):
-    try:
-        jti = decode_token(refresh_token).get("jti")
-        if not jti:
-            raise HTTPException(status_code=400, detail="Refresh inválido")
-    except JWTError:
-        raise HTTPException(status_code=400, detail="Refresh inválido")
-
-    await revoke_refresh(session, jti)
+async def logout(
+    response: Response,
+    session: AsyncSession = Depends(get_session),
+    refresh_token: Optional[str] = Cookie(default=None),
+):
+    if refresh_token:
+        try:
+            payload = decode_token(refresh_token)
+            jti = payload.get("jti")
+            if jti:
+                await revoke_refresh(session, jti)
+        except JWTError:
+            pass  # Token já inválido, apenas remove cookie
+    
+    # Remove cookie com EXATAMENTE as mesmas configurações do set_cookie
+    response.delete_cookie(
+        key=COOKIE_CONFIG["key"],
+        path=COOKIE_CONFIG["path"],
+        samesite=COOKIE_CONFIG["samesite"],
+    )
+    
     return {"ok": True}

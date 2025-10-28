@@ -18,15 +18,19 @@ async def get_current_user(
 
     try:
         payload = decode_token(creds.credentials)
-        username = payload.get("sub")
-        if not username:
+        user_id = payload.get("sub")     # <- agora é ID
+        if not user_id:
             raise HTTPException(status_code=401, detail="Invalid token")
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
     row = (await session.execute(
-        text("SELECT id, username, email, posto_graduacao, is_active FROM users WHERE username = :u"),
-        {"u": username}
+        text("""
+            SELECT id, username, email, posto_graduacao, is_active
+            FROM users
+            WHERE id = :uid
+        """),
+        {"uid": int(user_id)}
     )).mappings().first()
 
     if not row or not row["is_active"]:

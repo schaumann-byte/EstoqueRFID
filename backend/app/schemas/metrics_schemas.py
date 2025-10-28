@@ -48,6 +48,7 @@ class ItemRow(BaseModel):
     descricao: str
     marca: str
     categoria: str
+    ultima_verificacao: Optional[datetime] = None   
 
 class ItemsPage(BaseModel):
     items: List[ItemRow]
