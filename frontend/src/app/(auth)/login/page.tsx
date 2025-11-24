@@ -37,14 +37,15 @@ export default function LoginPage() {
       {/* Card */}
       <div className="mx-auto flex w-full max-w-5xl overflow-hidden rounded-xl bg-white shadow-2xl">
         {/* Left - Image */}
-        <div className="relative hidden w-[44%] md:block">
-          {/* <Image
-            src="/warehouse-worker.jpg"
-            alt="Trabalhador em armazém"
-            fill
+        <div className="hidden w-[40%] md:flex items-center justify-center">
+          <Image
+            src="/logo_parque.png"
+            alt="Logo do sistema de estoque"
+            width={260}          // 🔹 controla o tamanho
+            height={260}
+            className="object-contain"  // 🔹 mantém proporção
             priority
-            className="object-cover"
-          /> */}
+          />
         </div>
 
         {/* Right - Form */}

@@ -3,6 +3,8 @@
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include <SoftwareSerial.h>
+#include <ArduinoSTL.h>
+
 
 // ------------------ PINAGEM ------------------
 static const uint8_t PIN_SS  = 10; // RC522 SDA/SS

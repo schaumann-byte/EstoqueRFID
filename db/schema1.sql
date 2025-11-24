@@ -152,6 +152,20 @@ CREATE INDEX IF NOT EXISTS idx_refresh_valid ON refresh_tokens(expires_at) WHERE
 COMMIT;
 
 
+BEGIN;
+
+-- Adiciona coluna is_admin à tabela users
+ALTER TABLE users 
+ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Índice para consultas de usuários admin
+CREATE INDEX IF NOT EXISTS idx_users_is_admin ON users(is_admin) WHERE is_admin = TRUE;
+
+-- Comentário descritivo
+COMMENT ON COLUMN users.is_admin IS 'Indica se o usuário possui privilégios de administrador';
+
+COMMIT;
+
 
 
 

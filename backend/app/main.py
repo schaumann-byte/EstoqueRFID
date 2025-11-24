@@ -2,8 +2,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .routers.metrics_router import router as metrics_router
 from .routers import rfid_router
+from .routers import users_router
+from .routers import items_router
+from .routers import vinculos_router
 from .auth.router import router as auth_router
 from app.core.config import settings   # <- use settings
+
 
 app = FastAPI(title="EstoqueRFID")
 
@@ -16,8 +20,12 @@ app.add_middleware(
 )
 
 app.include_router(metrics_router)
+app.include_router(users_router.router)
 app.include_router(rfid_router.router)
+app.include_router(items_router.router)
+app.include_router(vinculos_router.router)
 app.include_router(auth_router)
+
 
 @app.get("/health")
 def health():

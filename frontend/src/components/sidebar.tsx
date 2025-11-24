@@ -7,26 +7,22 @@ import {
   LayoutGrid,
   Package,
   Boxes,
-  Truck,
-  ArrowLeftRight,
-  Settings,
+  PackageCheck,
   Users,
-  LogOut,              // <- novo ícone
+  LogOut,
+  Tag,
+  User,
 } from "lucide-react";
-import { useState } from "react";
-import { useAuth } from "@/context/AuthContext"; // <- usa o contexto de auth
+import { useState, useEffect } from "react";
+import { useAuth } from "@/context/AuthContext";
+
 type Lucide = ComponentType<SVGProps<SVGSVGElement>>;
 
-const ICONS: Record<
-  "dashboard" | "package" | "boxes" | "truck" | "arrows" | "settings" | "users",
-  Lucide
-> = {
+const ICONS: Record<"dashboard" | "package" | "boxes" | "deliveries" | "users", Lucide> = {
   dashboard: LayoutGrid,
-  package: Package,
+  package: Tag,
   boxes: Boxes,
-  truck: Truck,
-  arrows: ArrowLeftRight,
-  settings: Settings,
+  deliveries: PackageCheck,
   users: Users,
 };
 
@@ -41,9 +37,6 @@ const ITEMS: Item[] = [
   { label: "Dashboard", href: "/dashboard", icon: "dashboard", section: "main" },
   { label: "Itens", href: "/itens", icon: "package", section: "main" },
   { label: "Pedidos", href: "/pedidos", icon: "boxes", section: "main" },
-  { label: "Fornecedores", href: "/fornecedores", icon: "truck", section: "main" },
-  { label: "Movimentações", href: "/movimentacoes", icon: "arrows", section: "main" },
-  { label: "Sistema", href: "/sistema", icon: "settings", section: "config" },
   { label: "Usuários", href: "/usuarios", icon: "users", section: "config" },
 ];
 
@@ -66,24 +59,73 @@ function NavItem({ item, active }: { item: Item; active: boolean }) {
   );
 }
 
+type UserData = {
+  id: number;
+  username: string;
+  email: string;
+  posto_graduacao: string;
+  is_active: boolean;
+  is_admin: boolean;
+};
+
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { logout } = useAuth();           // <- pega logout do contexto
+  const { logout } = useAuth();
   const [leaving, setLeaving] = useState(false);
+  const [userData, setUserData] = useState<UserData | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const main = ITEMS.filter((i) => i.section === "main");
   const config = ITEMS.filter((i) => i.section === "config");
 
+  // Buscar dados do usuário atual
+  useEffect(() => {
+    fetchUserData();
+  }, []);
+
+  async function fetchUserData() {
+    try {
+      const base =
+        process.env.NEXT_PUBLIC_API_BASE_URL || process.env.API_BASE_URL || "";
+      const url = `${base.replace(/\/$/, "")}/users/me`;
+
+      const res = await fetch(url, {
+        credentials: "include", // Importante para enviar cookies/tokens
+      });
+
+      if (!res.ok) {
+        console.error("Erro ao buscar dados do usuário:", res.status);
+        return;
+      }
+
+      const data = await res.json();
+      setUserData(data);
+    } catch (error) {
+      console.error("Erro ao buscar dados do usuário:", error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleLogout() {
     try {
       setLeaving(true);
-      await logout();                     // chama /api/auth/logout e limpa token no contexto
+      await logout();
       router.replace("/login");
     } finally {
       setLeaving(false);
     }
   }
+
+  // Função para gerar iniciais do nome
+  const getInitials = (username: string) => {
+    const parts = username.split(" ");
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+    return username.substring(0, 2).toUpperCase();
+  };
 
   return (
     <aside
@@ -144,13 +186,48 @@ export default function Sidebar() {
 
       {/* Usuário + Logout */}
       <div className="absolute inset-x-0 bottom-0 px-4 pb-5 space-y-2">
-        <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-          <div className="h-8 w-8 rounded-full bg-slate-300" />
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-slate-800">Henrique</p>
-            <p className="truncate text-xs text-slate-500">Admin</p>
+        {loading ? (
+          // Loading state
+          <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 animate-pulse">
+            <div className="h-8 w-8 rounded-full bg-slate-300" />
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className="h-3 bg-slate-300 rounded w-20" />
+              <div className="h-2 bg-slate-200 rounded w-16" />
+            </div>
           </div>
-        </div>
+        ) : userData ? (
+          // User data loaded
+          <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+            {/* Avatar com iniciais */}
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-700 text-xs font-semibold text-white">
+              {getInitials(userData.username)}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-slate-800">
+                {userData.username}
+              </p>
+              <div className="flex items-center gap-1.5">
+                <p className="truncate text-xs text-slate-500">
+                  {userData.posto_graduacao}
+                </p>
+                {userData.is_admin && (
+                  <span className="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+                    Admin
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          // Error state
+          <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+            <User className="h-8 w-8 text-slate-400" />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium text-slate-800">Usuário</p>
+              <p className="truncate text-xs text-slate-500">Erro ao carregar</p>
+            </div>
+          </div>
+        )}
 
         <button
           type="button"
@@ -172,5 +249,6 @@ export default function Sidebar() {
     </aside>
   );
 }
+
 
 

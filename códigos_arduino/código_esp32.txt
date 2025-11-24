@@ -44,12 +44,17 @@ String logBuf = "";
 const size_t LOG_MAX = 16*1024; // buffer de logs
 bool isAP = false;
 
-const char* API_BASE = "http://192.168.32.91:8000";  
+const char* API_BASE = "http://10.210.141.170:8000";  
 const char* API_HEARTBEAT = "/rfid/heartbeat";
 
 // Helper para append no log (corta quando cresce demais)
+// AGORA: também imprime tudo no Serial Monitor
 void appendLog(const String &s) {
   logBuf += s;
+
+  // Joga tudo também na serial
+  Serial.print(s);
+
   if (logBuf.length() > LOG_MAX) {
     // manter apenas final
     logBuf = logBuf.substring(logBuf.length() - LOG_MAX);
@@ -84,9 +89,6 @@ bool postHeartbeat(const String& uid, const String& origem) {
   } else {
     appendLog("POST fail: " + String(http.errorToString(code).c_str()) + "\n");
   }
-
-  // opcional: ler resposta
-  // String resp = http.getString(); appendLog(resp + "\n");
 
   http.end();
   return code >= 200 && code < 300;
@@ -249,7 +251,10 @@ bool connectSavedWifi() {
     delay(500);
   }
   if (WiFi.status() == WL_CONNECTED) {
-    appendLog("WiFi connected: " + WiFi.localIP().toString() + "\n");
+    IPAddress ip = WiFi.localIP();
+    appendLog("WiFi connected: " + ip.toString() + "\n");
+    Serial.print("IP STA: ");
+    Serial.println(ip);
     return true;
   } else {
     appendLog("WiFi connect FAILED\n");
@@ -264,6 +269,16 @@ void startAP() {
   delay(200);
   IPAddress apIP = WiFi.softAPIP(); // normalmente 192.168.4.1
   appendLog("AP started: " + apIP.toString() + " SSID:" + String(AP_SSID) + "\n");
+
+  Serial.println("======== MODO AP ========");
+  Serial.print("SSID: ");
+  Serial.println(AP_SSID);
+  Serial.print("PASS: ");
+  Serial.println(AP_PASS);
+  Serial.print("IP AP: ");
+  Serial.println(apIP);
+  Serial.println("=========================");
+
   startCaptive();
   isAP = true;
 }

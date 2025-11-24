@@ -3,7 +3,9 @@
 
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { Plus, CalendarDays } from "lucide-react";
-import AddItemModal from "@/components/AddItemModal";
+import AddItemModal, { type NewItemPayload } from "@/components/AddItemModal";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
 
 export type ItemRow = {
   id: number;
@@ -12,7 +14,7 @@ export type ItemRow = {
   timestamp_entrada: string;
   data_validade?: string | null;
   timestamp_saida?: string | null; // NULL => em estoque
-  ultima_verificacao?: string | null; // 👈 ADICIONADO
+  ultima_verificacao?: string | null;
   descricao: string;
   marca: string;
   categoria: string;
@@ -67,13 +69,12 @@ function statusInfo(timestamp_saida?: string | null) {
 }
 
 async function fetchItemsClient(): Promise<ItemsPage> {
-  const base =
-    process.env.NEXT_PUBLIC_API_BASE_URL ||
-    process.env.API_BASE_URL ||
-    "";
-  const url = `${base.replace(/\/$/, "")}/metrics/items?page=1&page_size=50`;
+  const url = `${API_BASE.replace(/\/$/, "")}/metrics/items?page=1&page_size=50`;
 
-  const res = await fetch(url, { cache: "no-store" });
+  const res = await fetch(url, { 
+    cache: "no-store",
+    credentials: "include" 
+  });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`Falha ao buscar items (${res.status}): ${text}`);
@@ -81,27 +82,84 @@ async function fetchItemsClient(): Promise<ItemsPage> {
   return res.json();
 }
 
+async function fetchDescriptions(): Promise<string[]> {
+  try {
+    const url = `${API_BASE.replace(/\/$/, "")}/items/descriptions`;
+    const res = await fetch(url, { 
+      cache: "no-store",
+      credentials: "include" 
+    });
+    
+    if (!res.ok) return [];
+    
+    const data = await res.json();
+    return data.map((d: any) => d.descricao);
+  } catch (error) {
+    console.error("Erro ao buscar descrições:", error);
+    return [];
+  }
+}
+
 export default function ItemsPanel() {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState<StockFilter>("inside");
   const [page, setPage] = useState<ItemsPage | null>(null);
+  const [descriptions, setDescriptions] = useState<string[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
 
-  useEffect(() => {
-    let mounted = true;
+  const loadData = useCallback(async () => {
     setLoading(true);
     setErr(null);
 
-    fetchItemsClient()
-      .then((data) => mounted && setPage(data))
-      .catch((e) => mounted && setErr(e instanceof Error ? e.message : String(e)))
-      .finally(() => mounted && setLoading(false));
-
-    return () => {
-      mounted = false;
-    };
+    try {
+      const [itemsData, descriptionsData] = await Promise.all([
+        fetchItemsClient(),
+        fetchDescriptions(),
+      ]);
+      
+      setPage(itemsData);
+      setDescriptions(descriptionsData);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const handleCreateItem = async (payload: NewItemPayload) => {
+    setCreating(true);
+    
+    try {
+      const url = `${API_BASE.replace(/\/$/, "")}/items`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({ detail: "Erro ao criar item" }));
+        throw new Error(error.detail || "Erro ao criar item");
+      }
+
+      // Recarregar dados
+      await loadData();
+      
+      // Fechar modal (será feito pelo AddItemModal após onCreate)
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Erro ao criar item");
+      throw error; // Re-throw para que o modal saiba que houve erro
+    } finally {
+      setCreating(false);
+    }
+  };
 
   const isOutside = filter === "outside";
   const toggleStatus = useCallback(() => {
@@ -169,7 +227,8 @@ export default function ItemsPanel() {
           <button
             type="button"
             onClick={() => setOpen(true)}
-            className="inline-flex items-center gap-2 rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
+            disabled={creating}
+            className="inline-flex items-center gap-2 rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Plus className="h-4 w-4" />
             Adicionar Item
@@ -202,8 +261,6 @@ export default function ItemsPanel() {
                     const st = statusInfo(it.timestamp_saida);
                     const inside = st.inside;
 
-                    // 👉 para "dentro do estoque": mostra Validade e Últ. verificação
-                    // 👉 para "fora do estoque": mostra Saída (como já estava)
                     let content: React.ReactNode;
 
                     if (inside) {
@@ -312,7 +369,12 @@ export default function ItemsPanel() {
         )}
       </div>
 
-      <AddItemModal open={open} onClose={() => setOpen(false)} />
+      <AddItemModal 
+        open={open} 
+        onClose={() => setOpen(false)} 
+        onCreate={handleCreateItem}
+        descriptionOptions={descriptions.length > 0 ? descriptions : undefined}
+      />
     </>
   );
 }
