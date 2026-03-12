@@ -173,3 +173,20 @@ source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
+
+## 📜 Bibliotecas necessárias para os códigos Arduino
+
+**Esp32**
+```bash
+# dentro de frontend/
+npm install
+npm run dev     # ou npm run deve (se seu script tiver esse nome)
+```
+
+**Nano**
+```bash
+LiquidCrystal_I2C by johnrickman (https://github.com/johnrickman/LiquidCrystal_I2C)
+MFRC522 by github community (https://github.com/miguelbalboa/rfid)
+Esp_Software_Serial by Dirk Kaar (https://github.com/sndnvaps/espsoftwareserial/)
+
+```
