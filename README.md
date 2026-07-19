@@ -3,190 +3,135 @@
 Sistema de controle de estoque com rastreamento por **RFID**.  
 Frontend (Next.js) + Backend (FastAPI) + PostgreSQL.
 
-## 🔧 Requisitos
+---
 
-- **Node.js** 18+ (ou 20+ recomendado) e **npm**
+## 🔧 Requisitos Prévia
+
+- **Node.js** 18+ e **npm**
 - **Python** 3.10+ e **pip**
-- **PostgreSQL** rodando localmente
-- (Opcional) **virtualenv** / `python -m venv` para isolar o backend
+- **PostgreSQL** rodando localmente (porta 5432)
 
-## 📦 Clonar o repositório
+---
 
+## 🚀 Passo a Passo Rápidos (Do Clone ao Executar)
+
+### 1. Clonar o repositório
 ```bash
-git clone https://github.com/SEU_USUARIO/EstoqueRFID.git
+git clone https://github.com/schaumann-byte/EstoqueRFID.git
 cd EstoqueRFID
 ```
 
-> Ajuste a URL acima para o seu repositório real.
-
 ---
 
-## 🗂️ Estrutura (resumo)
+### 2. Configurar o Banco de Dados (PostgreSQL)
 
-```
-EstoqueRFID/
-├─ frontend/           # Next.js
-│  ├─ package.json
-│  └─ .env             # (crie você)
-├─ backend/            # FastAPI
-│  ├─ app/
-│  │  └─ main.py       # app.main:app
-│  ├─ requirements.txt
-│  └─ .env             # (crie você)
-└─ README.md
-```
+Abra o PostgreSQL e execute os comandos para criar o usuário e o banco de dados esperados pela aplicação:
 
----
-
-## 🔐 Variáveis de ambiente
-
-Crie um arquivo **`.env`** dentro de **`backend/`** com:
-
-```dotenv
-# Ajuste os valores conforme seu Postgres (Do back)
-DATABASE_URL=postgresql+asyncpg://postgres:**********@localhost:5432/estoque
-APP_NAME=EstoqueRFID
-ACCESS_TOKEN_EXPIRE_MINUTES=15
-REFRESH_TOKEN_EXPIRE_DAYS=7
-JWT_SECRET=*********
-CORS_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000"]
-```
-
-Crie um arquivo **`.env`** dentro de **`frontend/`** com:
-
-```dotenv
-# Ajuste os valores (Do front)
-NEXT_PUBLIC_API_BASE_URL="http://127.0.0.1:8000"
-```
-
-> **Importante:** mantenha esses arquivos fora do controle de versão público.
-
----
-
-## ▶️ Rodando o Frontend
-
-1. Entre na pasta do frontend:
-   ```bash
-   cd frontend
-   ```
-2. Instale as dependências:
-   ```bash
-   npm install
-   ```
-3. Rode o servidor de desenvolvimento:
-   ```bash
-   npm run dev
-   # ou, se o seu script se chama "deve" no package.json:
-   npm run deve
-   ```
-4. Acesse: **http://localhost:3000**
-
----
-
-## 🐍 Rodando o Backend (FastAPI)
-
-1. Entre na pasta do backend:
-   ```bash
-   cd backend
-   ```
-
-2. (Recomendado) Crie e ative um ambiente virtual:
-
-   **Windows (PowerShell):**
-   ```powershell
-   python -m venv .venv
-   .\.venv\Scripts\Activate
-   ```
-
-   **Linux/macOS:**
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate
-   ```
-
-3. Instale os requirements:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. Suba a API com **Uvicorn** (hot-reload):
-   ```bash
-   uvicorn app.main:app --reload
-   ```
-   A API ficará em **http://127.0.0.1:8000**
-
----
-
-## 🔗 Integração Front ↔ Back
-
-- Garanta que **`NEXT_PUBLIC_API_BASE_URL`** no **frontend/.env** aponte para o endereço do backend (ex.: `http://127.0.0.1:8000`).
-- Garanta que **`CORS_ORIGINS`** no **backend/.env** inclua as origens do frontend:
-  ```dotenv
-  CORS_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000"]
-  ```
-
----
-
-## 🧪 Teste rápido
-
-- Frontend: abra **http://localhost:3000**
-- Backend: abra **http://127.0.0.1:8000/docs** para a UI do Swagger
-
----
-
-## 🛠️ Dicas & Troubleshooting
-
-- **Porta 3000 ocupada** no frontend:  
-  Rode com outra porta:
-  ```bash
-  PORT=3001 npm run dev
-  ```
-- **Porta 8000 ocupada** no backend:  
-  ```bash
-  uvicorn app.main:app --reload --port 8001
-  ```
-- **Erro de CORS**: verifique `CORS_ORIGINS` no backend e a URL do frontend.
-- **Conexão com Postgres**: confira `DATABASE_URL` e se o serviço está acessível:
-  - Host, porta, usuário, senha e nome do DB.
-  - Ex.: `postgresql+asyncpg://postgres:senha@localhost:5432/estoque`.
-
----
-
-## 📜 Scripts úteis
-
-**Frontend**
 ```bash
-# dentro de frontend/
-npm install
-npm run dev     # ou npm run deve (se seu script tiver esse nome)
+# 1. Definir a senha do usuário postgres e criar o banco 'estoque'
+sudo -u postgres psql -c "ALTER USER postgres WITH PASSWORD 'postgres478';"
+sudo -u postgres psql -c "CREATE DATABASE estoque;"
+
+# 2. Executar os scripts de tabela e dados iniciais
+sudo -u postgres psql -d estoque -f db/schema1.sql
+sudo -u postgres psql -d estoque -f db/schema2.sql
+sudo -u postgres psql -d estoque -f db/schema3.sql
+sudo -u postgres psql -d estoque -f db/seed.sql
 ```
 
-**Backend**
+> **Nota:** Se a sua senha ou usuário do Postgres forem diferentes, ajuste no arquivo `backend/.env`.
+
+---
+
+### 3. Configurar e Rodar o Backend (FastAPI)
+
+Em um terminal:
+
 ```bash
-# dentro de backend/
+cd backend
+
+# Criar o ambiente virtual
 python -m venv .venv
-# Windows:
-.\.venv\Scripts\Activate
-# Linux/macOS:
-source .venv/bin/activate
 
+# Ativar o ambiente virtual:
+# Linux / macOS (Bash / Zsh):
+source .venv/bin/activate
+# Linux (Fish Shell):
+source .venv/bin/activate.fish
+# Windows (PowerShell):
+.\.venv\Scripts\Activate.ps1
+
+# Instalar dependências
 pip install -r requirements.txt
+
+# Iniciar o servidor backend
 uvicorn app.main:app --reload
 ```
 
+A API ficará disponível em: **`http://127.0.0.1:8000`**  
+Documentação (Swagger UI): **`http://127.0.0.1:8000/docs`**
+
+---
+
+### 4. Configurar e Rodar o Frontend (Next.js)
+
+Em um **segundo terminal**:
+
+```bash
+cd frontend
+
+# Instalar dependências do Node
+npm install
+
+# Iniciar o frontend em modo de desenvolvimento
+npm run dev
+```
+
+O Frontend ficará disponível em: **`http://localhost:3000`**
+
+---
+
+## 🔐 Variáveis de Ambiente (`.env`)
+
+### `backend/.env`
+```dotenv
+DATABASE_URL=postgresql+asyncpg://postgres:postgres478@localhost:5432/estoque
+APP_NAME=EstoqueRFID
+ACCESS_TOKEN_EXPIRE_MINUTES=15
+REFRESH_TOKEN_EXPIRE_DAYS=7
+JWT_SECRET=12345678
+CORS_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000"]
+```
+
+### `frontend/.env`
+```dotenv
+NEXT_PUBLIC_API_BASE_URL="http://127.0.0.1:8000"
+```
+
+---
+
+## 🗂️ Estrutura do Projeto
+
+```
+EstoqueRFID/
+├─ frontend/           # Next.js 15 (React 19, TailwindCSS)
+│  ├─ src/
+│  ├─ package.json
+│  └─ .env
+├─ backend/            # FastAPI (SQLAlchemy async, JWT, bcrypt)
+│  ├─ app/
+│  │  └─ main.py
+│  ├─ requirements.txt
+│  └─ .env
+├─ db/                 # Schemas SQL e dados iniciais (seed)
+└─ códigos_arduino/    # Sketches C++ para ESP32 e Arduino Nano
+```
+
+---
+
 ## 📜 Bibliotecas necessárias para os códigos Arduino
 
-**Esp32**
-```bash
-# dentro de frontend/
-npm install
-npm run dev     # ou npm run deve (se seu script tiver esse nome)
-```
-
-**Nano**
-```bash
-LiquidCrystal_I2C by johnrickman (https://github.com/johnrickman/LiquidCrystal_I2C)
-MFRC522 by github community (https://github.com/miguelbalboa/rfid)
-Esp_Software_Serial by Dirk Kaar (https://github.com/sndnvaps/espsoftwareserial/)
-
-```
+**Nano (Arduino)**
+- `LiquidCrystal_I2C` por johnrickman ([GitHub](https://github.com/johnrickman/LiquidCrystal_I2C))
+- `MFRC522` pela comunidade GitHub ([GitHub](https://github.com/miguelbalboa/rfid))
+- `Esp_Software_Serial` por Dirk Kaar ([GitHub](https://github.com/sndnvaps/espsoftwareserial/))

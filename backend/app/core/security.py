@@ -1,19 +1,19 @@
 from datetime import datetime, timedelta, timezone
 from jose import jwt
-from passlib.context import CryptContext
+# pyrefly: ignore [missing-import]
+import bcrypt
 from app.core.config import settings
 import uuid
 
-pwd_context = CryptContext(
-    schemes=["bcrypt_sha256", "bcrypt"],
-    deprecated="auto",
-)
-
 def hash_password(plain: str) -> str:
-    return pwd_context.hash(plain)
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(plain.encode('utf-8'), salt).decode('utf-8')
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    try:
+        return bcrypt.checkpw(plain.encode('utf-8'), hashed.encode('utf-8'))
+    except Exception:
+        return False
 
 def _utcnow():
     return datetime.now(timezone.utc)
