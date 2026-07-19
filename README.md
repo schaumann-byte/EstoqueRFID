@@ -95,11 +95,11 @@ O Frontend ficará disponível em: **`http://localhost:3000`**
 
 ### `backend/.env`
 ```dotenv
-DATABASE_URL=postgresql+asyncpg://postgres:postgres478@localhost:5432/estoque
+DATABASE_URL=postgresql+asyncpg://postgres:SUA_SENHA_AQUI@localhost:5432/estoque
 APP_NAME=EstoqueRFID
 ACCESS_TOKEN_EXPIRE_MINUTES=15
 REFRESH_TOKEN_EXPIRE_DAYS=7
-JWT_SECRET=12345678
+JWT_SECRET=seu_jwt_secret_super_seguro_aqui
 CORS_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000"]
 ```
 
