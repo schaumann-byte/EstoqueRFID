@@ -7,7 +7,11 @@ from .routers import items_router
 from .routers import vinculos_router
 from .auth.router import router as auth_router
 from app.core.config import settings   # <- use settings
+from app.core.init_db import init_database
 
+# iniciar database
+init_database()
+print("DATABASE_URL:", settings.DATABASE_URL)
 
 app = FastAPI(title="EstoqueRFID")
 
