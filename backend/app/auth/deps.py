@@ -26,7 +26,7 @@ async def get_current_user(
 
     row = (await session.execute(
         text("""
-            SELECT id, username, email, posto_graduacao, is_active
+            SELECT id, username, email, posto_graduacao, is_active, is_admin, om_id, created_at
             FROM users
             WHERE id = :uid
         """),

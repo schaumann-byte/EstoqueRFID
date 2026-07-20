@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { Plus, CalendarDays } from "lucide-react";
 import AddItemModal, { type NewItemPayload } from "@/components/AddItemModal";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000";
 
 export type ItemRow = {
   id: number;

@@ -15,21 +15,14 @@ from ..schemas.items_schemas import (
     ProductDescriptionOption,
 )
 
-# TODO: Importar a dependência de autenticação
-# from ..auth import get_current_user
+from app.auth.deps import get_current_user
 
 
 router = APIRouter(prefix="/items", tags=["items"])
 
 
-# Dependência temporária - substituir pela sua implementação real de auth
-async def get_current_username() -> str:
-    """
-    TODO: Substituir por sua implementação real de autenticação.
-    Esta função deve retornar o username do usuário autenticado.
-    """
-    # Exemplo: return request.state.username ou extrair do token JWT
-    return "Sistema"  # Placeholder
+async def get_current_username(current_user: dict = Depends(get_current_user)) -> str:
+    return current_user["username"]
 
 
 @router.post("", response_model=CreateItemResponse, status_code=status.HTTP_201_CREATED)

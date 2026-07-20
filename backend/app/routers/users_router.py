@@ -20,33 +20,23 @@ from ..schemas.users_schemas import (
     UserUpdateActive,
 )
 
-# TODO: Importar a dependência de autenticação e verificação de admin
-# from ..auth import get_current_user, require_admin
+from app.auth.deps import get_current_user
 
 
 router = APIRouter(prefix="/users", tags=["users"])
 
 
-# Dependência temporária - substituir pela sua implementação real de auth
-async def get_current_user_id() -> int:
-    """
-    TODO: Substituir por sua implementação real de autenticação.
-    Esta função deve retornar o ID do usuário autenticado.
-    """
-    # Exemplo: return request.state.user_id
-    return 1  # Placeholder
+async def get_current_user_id(current_user: dict = Depends(get_current_user)) -> int:
+    return current_user["id"]
 
 
-async def require_admin(user_id: int = Depends(get_current_user_id)) -> int:
-    """
-    TODO: Substituir por sua implementação real de verificação de admin.
-    Esta função deve verificar se o usuário autenticado é admin.
-    """
-    # Exemplo de como seria:
-    # user = await get_user_by_id(session, user_id)
-    # if not user["is_admin"]:
-    #     raise HTTPException(status_code=403, detail="Acesso negado: privilégios de admin necessários")
-    return user_id
+async def require_admin(current_user: dict = Depends(get_current_user)) -> int:
+    if not current_user.get("is_admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acesso negado: privilégios de admin necessários"
+        )
+    return current_user["id"]
 
 
 # ============================================================================
@@ -56,30 +46,14 @@ async def require_admin(user_id: int = Depends(get_current_user_id)) -> int:
 
 @router.get("/me", response_model=UserListItem)
 async def get_current_user_data(
-    session: AsyncSession = Depends(get_session),
-    current_user_id: int = Depends(get_current_user_id),
+    current_user: dict = Depends(get_current_user),
 ) -> UserListItem:
     """
     🔵 ENDPOINT PÚBLICO (não requer admin)
     
     Retorna os dados do usuário atualmente autenticado.
-    
-    Este endpoint pode ser acessado por qualquer usuário autenticado
-    para obter seus próprios dados (não requer privilégios de admin).
-    
-    Usado para:
-    - Exibir informações do usuário na sidebar
-    - Perfil do usuário
-    - Verificar permissões (is_admin)
     """
-    try:
-        user = await get_user_by_id(session, current_user_id)
-        return UserListItem(**user)
-    except UserNotFoundError:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Usuário autenticado não encontrado no sistema"
-        )
+    return UserListItem(**current_user)
 
 
 @router.get("", response_model=UsersPage)

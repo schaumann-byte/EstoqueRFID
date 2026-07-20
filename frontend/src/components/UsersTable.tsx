@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Shield, ShieldOff, Trash2, UserCheck, UserX, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { useAuth } from "@/context/AuthContext";
 
 export type UserRow = {
   id: number;
@@ -21,7 +22,7 @@ type UsersPage = {
   page_size: number;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000";
 
 function fmtDate(val: string) {
   const d = new Date(val);
@@ -36,6 +37,7 @@ function fmtDate(val: string) {
 }
 
 export default function UsersTable() {
+  const { accessToken, isLoading: authLoading, refreshAccessToken } = useAuth();
   const [page, setPage] = useState<UsersPage | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [search, setSearch] = useState("");
@@ -58,9 +60,44 @@ export default function UsersTable() {
         params.append("search", searchTerm);
       }
 
+      let token = accessToken;
+
+      // Se não temos token, tenta fazer refresh primeiro
+      if (!token) {
+        token = await refreshAccessToken();
+      }
+
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
       const res = await fetch(`${API_BASE}/users?${params}`, {
+        headers,
         credentials: "include",
       });
+
+      // Se recebeu 401, tenta refresh e repete a requisição
+      if (res.status === 401 && token) {
+        const newToken = await refreshAccessToken();
+        if (newToken) {
+          const retryRes = await fetch(`${API_BASE}/users?${params}`, {
+            headers: { "Authorization": `Bearer ${newToken}` },
+            credentials: "include",
+          });
+
+          if (!retryRes.ok) {
+            if (retryRes.status === 403) {
+              throw new Error("Acesso negado. Apenas administradores podem acessar esta página.");
+            }
+            throw new Error(`Erro ao buscar usuários: ${retryRes.status}`);
+          }
+
+          const data: UsersPage = await retryRes.json();
+          setPage(data);
+          return;
+        }
+      }
 
       if (!res.ok) {
         if (res.status === 403) {
@@ -76,11 +113,13 @@ export default function UsersTable() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [accessToken, refreshAccessToken]);
 
   useEffect(() => {
+    // Não busca enquanto o auth ainda está carregando
+    if (authLoading) return;
     fetchUsers(currentPage, search);
-  }, [currentPage, search, fetchUsers]);
+  }, [currentPage, search, fetchUsers, authLoading]);
 
   const handleSearch = () => {
     setSearch(searchInput);
@@ -100,9 +139,12 @@ export default function UsersTable() {
 
     setActionLoading(userId);
     try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+
       const res = await fetch(`${API_BASE}/users/${userId}/admin`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers,
         credentials: "include",
         body: JSON.stringify({ is_admin: !currentIsAdmin }),
       });
@@ -133,9 +175,12 @@ export default function UsersTable() {
 
     setActionLoading(userId);
     try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+
       const res = await fetch(`${API_BASE}/users/${userId}/active`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers,
         credentials: "include",
         body: JSON.stringify({ is_active: !currentIsActive }),
       });
@@ -164,8 +209,12 @@ export default function UsersTable() {
 
     setActionLoading(userId);
     try {
+      const headers: Record<string, string> = {};
+      if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+
       const res = await fetch(`${API_BASE}/users/${userId}`, {
         method: "DELETE",
+        headers,
         credentials: "include",
       });
 

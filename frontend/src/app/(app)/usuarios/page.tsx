@@ -1,10 +1,79 @@
 // app/usuarios/page.tsx
-export const dynamic = "force-dynamic";
+"use client";
 
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/context/AuthContext";
 import Sidebar from "@/components/sidebar";
 import UsersTable from "@/components/UsersTable";
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000";
+
 export default function UsuariosPage() {
+  const { accessToken, isLoading: authLoading, refreshAccessToken } = useAuth();
+  const router = useRouter();
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  const [checking, setChecking] = useState(true);
+
+  useEffect(() => {
+    if (authLoading) return;
+
+    async function checkAdmin() {
+      let token = accessToken;
+      if (!token) {
+        token = await refreshAccessToken();
+      }
+
+      if (!token) {
+        router.replace("/login");
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/users/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
+        });
+
+        if (!res.ok) {
+          router.replace("/dashboard");
+          return;
+        }
+
+        const user = await res.json();
+        if (!user.is_admin) {
+          router.replace("/dashboard");
+          return;
+        }
+
+        setIsAdmin(true);
+      } catch {
+        router.replace("/dashboard");
+      } finally {
+        setChecking(false);
+      }
+    }
+
+    checkAdmin();
+  }, [authLoading, accessToken, refreshAccessToken, router]);
+
+  // Enquanto verifica, mostra loading
+  if (checking || isAdmin === null) {
+    return (
+      <div className="flex min-h-screen bg-slate-50">
+        <Sidebar />
+        <main className="flex-1 p-6 md:p-8">
+          <div className="mx-auto w-full max-w-[1400px] flex items-center justify-center min-h-[60vh]">
+            <div className="text-center">
+              <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-slate-300 border-t-slate-600" />
+              <p className="mt-3 text-sm text-slate-500">Verificando permissões...</p>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-screen bg-slate-50">
       <Sidebar />

@@ -71,7 +71,7 @@ type UserData = {
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { logout } = useAuth();
+  const { accessToken, logout } = useAuth();
   const [leaving, setLeaving] = useState(false);
   const [userData, setUserData] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -81,17 +81,25 @@ export default function Sidebar() {
 
   // Buscar dados do usuário atual
   useEffect(() => {
-    fetchUserData();
-  }, []);
+    if (accessToken) {
+      fetchUserData();
+    } else {
+      setLoading(false);
+    }
+  }, [accessToken]);
 
   async function fetchUserData() {
+    if (!accessToken) return;
     try {
       const base =
         process.env.NEXT_PUBLIC_API_BASE_URL || process.env.API_BASE_URL || "";
       const url = `${base.replace(/\/$/, "")}/users/me`;
 
       const res = await fetch(url, {
-        credentials: "include", // Importante para enviar cookies/tokens
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+        credentials: "include",
       });
 
       if (!res.ok) {
@@ -168,20 +176,22 @@ export default function Sidebar() {
           </div>
         </div>
 
-        <div>
-          <p className="mb-2 px-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
-            Configurações
-          </p>
-          <div className="space-y-1">
-            {config.map((item) => (
-              <NavItem
-                key={item.href}
-                item={item}
-                active={pathname === item.href || pathname?.startsWith(item.href + "/")}
-              />
-            ))}
+        {userData?.is_admin && (
+          <div>
+            <p className="mb-2 px-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Configurações
+            </p>
+            <div className="space-y-1">
+              {config.map((item) => (
+                <NavItem
+                  key={item.href}
+                  item={item}
+                  active={pathname === item.href || pathname?.startsWith(item.href + "/")}
+                />
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </nav>
 
       {/* Usuário + Logout */}

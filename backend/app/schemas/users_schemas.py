@@ -27,7 +27,7 @@ class UserListItem(BaseModel):
     is_active: bool
     is_admin: bool
     om_id: Optional[int] = None
-    created_at: datetime
+    created_at: Optional[datetime] = None
 
 
 class UsersPage(BaseModel):
